@@ -33,6 +33,8 @@ callprefixes=
 digitmode=0
 portablemode=0
 allowedchars=
+# nonzero value makes call and pitch selection repeatable; 0 remains random
+sessionseed=0
 dspdevice=/dev/dsp    # your DSP device, usually /dev/dsp (for OSS only)
 
 # risetime and falltime for shaping the CW sigs (in milliseconds). recommended

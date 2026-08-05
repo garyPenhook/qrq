@@ -156,6 +156,7 @@ static char allowedchars[CALL_MAX + 1]="";
 static int adaptiveselection=0;
 static int reviewmisses=0;
 static int accuracytarget=0;
+static unsigned int sessionseed=0;
 static int attemptvalid=1;				/* 1 = not using any "cheats" */
 static unsigned long int nrofcalls=0;	
 static int toplist_own=0;               /* show only own call on toplist */
@@ -355,7 +356,7 @@ int main (int argc, char *argv[]) {
 	read_config();
 
 	attemptvalid = 1;
-	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses) {
+	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses || sessionseed != 0) {
 		attemptvalid = 0;	
 	}
 
@@ -524,6 +525,9 @@ while (status == 1) {
 
 	/* Reread callbase */
 	nrofcalls = read_callbase();
+	if (sessionseed != 0) {
+		srand(sessionseed);
+	}
 
 	/****** send a configured number of calls, ask for input, score ******/
     start_summary_file();
@@ -919,7 +923,7 @@ while ((j = getch()) != 0) {
 	speed = initialspeed;
 
 	attemptvalid = 1;
-	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses) {
+	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses || sessionseed != 0) {
 		attemptvalid = 0;	
 	}
 
@@ -1891,6 +1895,20 @@ static int read_config (void) {
 				printw("  line  %2d: accuracy target: %d%%\n", line, accuracytarget);
 			}
 		}
+		else if (tmp == strstr(tmp, "sessionseed=")) {
+			char *end;
+			unsigned long seed;
+			errno = 0;
+			seed = strtoul(tmp + 12, &end, 10);
+			if (errno != 0 || seed > UINT_MAX || end == tmp + 12 || *end != '\0') {
+				sessionseed = 0;
+				printw("  line  %2d: session seed invalid; random seed enabled\n", line);
+			}
+			else {
+				sessionseed = (unsigned int)seed;
+				printw("  line  %2d: session seed: %u\n", line, sessionseed);
+			}
+		}
 		else if (tmp == strstr(tmp, "mincalllength=")) {
 			while (isdigit((unsigned char)(tmp[i] = tmp[15+i]))) {
 				i++;
@@ -2209,7 +2227,7 @@ static int save_config (void) {
 		"speedupstep", "speeddownstep", "sessionlength", "mincalllength",
 		"maxcalllength", "stoponerror", "adaptiveselection", "reviewmisses",
 		"accuracytarget", "callprefixes", "digitmode", "portablemode",
-		"allowedchars"
+		"allowedchars", "sessionseed"
 	};
 	FILE *fh = NULL;
 	char tmp[PATH_MAX + 80];
@@ -2290,7 +2308,8 @@ static int save_config (void) {
 			case 22: written = snprintf(tmp, sizeof(tmp), "%s=%s ", confopts[i], callprefixes); break;
 			case 23: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], digitmode); break;
 			case 24: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], portablemode); break;
-			default: written = snprintf(tmp, sizeof(tmp), "%s=%s ", confopts[i], allowedchars); break;
+			case 25: written = snprintf(tmp, sizeof(tmp), "%s=%s ", confopts[i], allowedchars); break;
+			default: written = snprintf(tmp, sizeof(tmp), "%s=%u ", confopts[i], sessionseed); break;
 		}
 		if (written < 0 || (size_t)written >= sizeof(tmp)) {
 			fprintf(stderr, "Unable to format config option '%s'.\n", confopts[i]);

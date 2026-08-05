@@ -47,7 +47,7 @@ practice.
   Both modes are optional per session and excluded from the comparable toplist.
 - [x] Filters for call length, prefixes, digits, portable suffixes, and
   characters through `qrqrc`; all constraints are applied by the loader.
-- Seeded sessions for repeatable challenges.
+- [x] Seeded sessions for repeatable challenges via `sessionseed` in `qrqrc`.
 
 ## Phase 4: Feedback and statistics
 
