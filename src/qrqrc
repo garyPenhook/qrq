@@ -21,6 +21,9 @@ maxcalllength=28
 # favor entries copied incorrectly during the current session
 # values: 0 = no, 1 = yes (adaptive sessions are not toplist comparable)
 adaptiveselection=0
+# repeat incorrectly copied calls later in the current session
+# values: 0 = no, 1 = yes (review sessions are not toplist comparable)
+reviewmisses=0
 dspdevice=/dev/dsp    # your DSP device, usually /dev/dsp (for OSS only)
 
 # risetime and falltime for shaping the CW sigs (in milliseconds). recommended

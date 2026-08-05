@@ -101,6 +101,7 @@ static char **calls = NULL;
 static size_t calls_allocated = 0;
 static unsigned char *call_used = NULL;
 static unsigned char *call_mistakes = NULL;
+static struct qrq_review_queue review_queue = {0};
 static struct qrq_callbase loaded_callbase = {0};
 
 static const char *codetable[] = {
@@ -145,6 +146,7 @@ static int sessionlength=50;				/* calls per standard practice session */
 static int mincalllength=1;
 static int maxcalllength=CALL_MAX;
 static int adaptiveselection=0;
+static int reviewmisses=0;
 static int attemptvalid=1;				/* 1 = not using any "cheats" */
 static unsigned long int nrofcalls=0;	
 static int toplist_own=0;               /* show only own call on toplist */
@@ -272,6 +274,7 @@ int main (int argc, char *argv[]) {
 	char abort = 0;
 	char tmp[CALL_MAX + 1]="";
 	char input[CALL_MAX + 1]="";
+	size_t selected_index;
 	int i=0,j=0,k=0;						/* counter etc. */
 	int attempt_limit;
 	char previouscall[CALL_MAX + 1]="";
@@ -323,7 +326,7 @@ int main (int argc, char *argv[]) {
 	read_config();
 
 	attemptvalid = 1;
-	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection) {
+	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses) {
 		attemptvalid = 0;	
 	}
 
@@ -501,6 +504,7 @@ while (status == 1) {
 	else {
 		attempt_limit = sessionlength;
 	}
+	qrq_review_queue_clear(&review_queue);
 
     for (callnr=1; callnr <= attempt_limit; callnr++) {
 		/* Make sure to wait for the cwthread of the previous callsign, if
@@ -512,8 +516,17 @@ while (status == 1) {
 		pthread_join(cwthread, NULL);
 #endif	
 		/* select an unused callsign from the calls-array */
-		i = (int)qrq_practice_choose((size_t)nrofcalls, call_used,
-				call_mistakes, adaptiveselection, (uint32_t)rand());
+		if (reviewmisses && qrq_review_queue_take(&review_queue, &selected_index)) {
+			if (selected_index > (size_t)INT_MAX) {
+				fprintf(stderr, "Review queue contains an invalid callbase index.\n");
+				break;
+			}
+			i = (int)selected_index; /* Review entries may already be marked used. */
+		}
+		else {
+			i = (int)qrq_practice_choose((size_t)nrofcalls, call_used,
+					call_mistakes, adaptiveselection, (uint32_t)rand());
+		}
 		if (i < 0) {
 			fprintf(stderr, "No unused callbase entries remain.\n");
 			break;
@@ -616,6 +629,9 @@ while (status == 1) {
 		if (strcmp(tmp, "-")) {			/* made an error */
 			if (call_mistakes[i] != UCHAR_MAX) {
 				call_mistakes[i]++;
+			}
+			if (reviewmisses && qrq_review_queue_push(&review_queue, (size_t)i) != 0) {
+				fprintf(stderr, "Unable to queue missed call for review.\n");
 			}
 				show_error(calls[i], tmp);
                 if (stoponerror)
@@ -732,6 +748,9 @@ while ((j = getch()) != 0) {
 		case 'a':
 				adaptiveselection = (adaptiveselection ? 0 : 1);
 			break;
+		case 'r':
+				reviewmisses = (reviewmisses ? 0 : 1);
+			break;
 		case 'u':
 				unlimitedattempt = (unlimitedattempt ? 0 : 1);
 			break;
@@ -842,7 +861,7 @@ while ((j = getch()) != 0) {
 	speed = initialspeed;
 
 	attemptvalid = 1;
-	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection) {
+	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses) {
 		attemptvalid = 0;	
 	}
 
@@ -906,8 +925,9 @@ void update_parameter_dialog (void) {
 		mvwprintw(conf_w,12,2, "Callsign database:     %-15s"
 					"      d (%ld)", basename(cbfilename),nrofcalls);
 	}
-	mvwprintw(conf_w,13,2, "Adaptive selection*:   %-3s  Stop on error: %-3s a/t",
-			adaptiveselection ? "yes" : "no", stoponerror ? "yes" : "no");
+	mvwprintw(conf_w,13,2, "Adaptive*: %-3s Review*: %-3s Stop: %-3s a/r/t",
+			adaptiveselection ? "yes" : "no", reviewmisses ? "yes" : "no",
+			stoponerror ? "yes" : "no");
 #ifdef OSS
 	mvwprintw(conf_w,14,2, "DSP device:            %-15s"
 					"      e", dspdevice);
@@ -1745,6 +1765,11 @@ static int read_config (void) {
 			printw("  line  %2d: adaptive selection: %s\n", line,
 					adaptiveselection ? "yes" : "no");
 		}
+		else if (tmp == strstr(tmp, "reviewmisses=")) {
+			reviewmisses = tmp[13] == '1';
+			printw("  line  %2d: review misses: %s\n", line,
+					reviewmisses ? "yes" : "no");
+		}
 		else if (tmp == strstr(tmp, "mincalllength=")) {
 			while (isdigit((unsigned char)(tmp[i] = tmp[15+i]))) {
 				i++;
@@ -2061,7 +2086,7 @@ static int save_config (void) {
 		"mincharspeed", "waveform", "constanttone", "ctonefreq",
 		"fixspeed", "unlimitedattempt", "f6", "risetime", "speedstep",
 		"speedupstep", "speeddownstep", "sessionlength", "mincalllength",
-		"maxcalllength", "stoponerror", "adaptiveselection"
+		"maxcalllength", "stoponerror", "adaptiveselection", "reviewmisses"
 	};
 	FILE *fh = NULL;
 	char tmp[PATH_MAX + 80];
@@ -2136,7 +2161,8 @@ static int save_config (void) {
 			case 16: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], mincalllength); break;
 			case 17: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], maxcalllength); break;
 			case 18: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], stoponerror); break;
-			default: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], adaptiveselection); break;
+			case 19: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], adaptiveselection); break;
+			default: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], reviewmisses); break;
 		}
 		if (written < 0 || (size_t)written >= sizeof(tmp)) {
 			fprintf(stderr, "Unable to format config option '%s'.\n", confopts[i]);
@@ -2651,6 +2677,7 @@ static void free_calls(void) {
 	call_used = NULL;
 	free(call_mistakes);
 	call_mistakes = NULL;
+	qrq_review_queue_clear(&review_queue);
 	qrq_callbase_free(&loaded_callbase);
 	calls = loaded_callbase.items;
 	calls_allocated = 0;

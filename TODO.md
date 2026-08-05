@@ -106,9 +106,9 @@ The OSS and PulseAudio backends both build locally.
    macOS/Core Audio builds.
 5. [x] Add independent up/down speed steps; legacy `speedstep` configs remain
    compatible, while `speedupstep` and `speeddownstep` persist separately.
-6. [~] Add missed-item review and adaptive selection. Error-weighted adaptive
-   selection is available through `adaptiveselection=1`; a dedicated review
-   queue remains.
+6. [x] Add missed-item review and adaptive selection. Enable
+   `adaptiveselection=1` to weight difficult calls, or `reviewmisses=1` to
+   schedule copied-wrong calls again in the same session.
 7. [~] Add filters for call length, prefixes, digits, portable suffixes, and
    characters. Length filtering is available through `qrqrc`.
 8. [x] Separate the runtime install prefix from package staging. `PREFIX`
