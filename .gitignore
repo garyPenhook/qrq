@@ -6,4 +6,6 @@ src/qrq
 src/test_score
 src/test_callbase
 src/test_practice
+src/test_history
+src/test_history.csv
 src/test_callbase.qcb

@@ -116,7 +116,9 @@ The OSS and PulseAudio backends both build locally.
    `digitmode`, `portablemode`, and `allowedchars` in `qrqrc`.
 9. [x] Separate the runtime install prefix from package staging. `PREFIX`
    defaults to `/usr`; `DESTDIR` can now stage a package tree safely.
-10. Future product features—history analytics, advanced
+10. [~] Record versioned local session history in `<toplist>.history.csv`;
+    per-item response timing and analytics remain.
+11. Future product features—advanced
    audio, and terminal UX—are tracked in `ROADMAP.md` and need a product-level
    design decision before implementation.
 9. [x] Add a warning-free strict C17 syntax gate with `-Werror`.

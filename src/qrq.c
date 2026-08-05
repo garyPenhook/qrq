@@ -95,6 +95,7 @@ typedef void *AUDIO_HANDLE;
 #include "score.h"
 #include "callbase.h"
 #include "practice.h"
+#include "history.h"
 
 /* callsign array will be dynamically allocated */
 static char **calls = NULL;
@@ -238,6 +239,7 @@ pthread_attr_t cwattr;
 
 char rcfilename[PATH_MAX]="";			/* filename and path to qrqrc */
 char tlfilename[PATH_MAX]="";			/* filename and path to toplist */
+char historyfilename[PATH_MAX]="";
 char cbfilename[PATH_MAX]="";			/* filename and path to callbase */
 char sumfilepath[PATH_MAX]="";			/* path where to save summary files for each attempt */
 
@@ -309,6 +311,12 @@ int main (int argc, char *argv[]) {
 	/* search for 'toplist', 'qrqrc' and callbase.qcb and put their locations
 	 * into tlfilename, rcfilename, cbfilename */
 	find_files();
+	if (snprintf(historyfilename, sizeof(historyfilename), "%s.history.csv", tlfilename) >=
+			(int)sizeof(historyfilename)) {
+		endwin();
+		fprintf(stderr, "History filename is too long.\n");
+		return EXIT_FAILURE;
+	}
 
 	/* check if the toplist is in the suitable format. as of 0.0.7, each line
 	 * is 31 characters long, with the added time stamp */
@@ -657,6 +665,12 @@ while (status == 1) {
 	toplist_score = score;
 	if (accuracytarget != 0 && attemptaccuracy < accuracytarget) {
 		toplist_score = 0;
+	}
+	if (qrq_history_append(historyfilename, &(struct qrq_history_entry){
+			.timestamp = time(NULL), .callsign = mycall, .calls = completedcalls,
+			.errors = errornr, .score = score, .max_speed = maxspeed,
+			.eligible = toplist_score != 0}) != 0) {
+		fprintf(stderr, "Unable to record session history in %s.\n", historyfilename);
 	}
 
 	/* attempt is over, send AR */

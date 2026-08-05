@@ -61,7 +61,7 @@ override CFLAGS += -D PREFIX=\"$(PREFIX)\" -D BUILD_INFO=\"$(BUILD_INFO)\" -D VE
 
 ifeq ($(USE_CA), YES)
 		CC=clang
-		OBJECTS=qrq.o score.o callbase.o practice.o coreaudio.o
+		OBJECTS=qrq.o score.o callbase.o practice.o history.o coreaudio.o
 		override CFLAGS += -D CA -std=c99 -pthread
 		ifeq ($(OSX_PLATFORM), YES)
 		override LDFLAGS += -framework AudioUnit -framework CoreServices  -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=10.5 -lcurses
@@ -80,13 +80,13 @@ ifeq ($(USE_CA), YES)
 else ifeq ($(USE_PA), YES)
 		override CFLAGS += -D PA -pthread $(NCURSES_CFLAGS) $(PULSE_CFLAGS)
 		override LDFLAGS += -lpthread $(PULSE_LIBS) $(NCURSES_LIBS)
-		OBJECTS=qrq.o score.o callbase.o practice.o pulseaudio.o
+		OBJECTS=qrq.o score.o callbase.o practice.o history.o pulseaudio.o
 else ifeq ($(USE_WIN32), YES)
 		override CFLAGS += -D WIN32 $(WIN32_CURSES_CFLAGS)
 		override LDFLAGS += -lwinmm -lpthread $(WIN32_CURSES_LIBS)
-		OBJECTS=qrq.o score.o callbase.o practice.o qrq.res
+		OBJECTS=qrq.o score.o callbase.o practice.o history.o qrq.res
 else
-		OBJECTS=qrq.o score.o callbase.o practice.o oss.o
+		OBJECTS=qrq.o score.o callbase.o practice.o history.o oss.o
 		override LDFLAGS += -lpthread $(NCURSES_LIBS)
 		override CFLAGS += -D OSS $(NCURSES_CFLAGS)
 endif
@@ -175,7 +175,7 @@ package: qrq
 	$(SSH) $(IPHONE_HOST) "dpkg -i /tmp/cydiastore_com.kb1ooo.qrq_v$(shell grep ^Version: control | cut -d ' ' -f 2).deb"
 
 clean:
-	rm -f qrq.exe qrq test_score test_callbase test_practice test_callbase.qcb toplist-old *~ *.o
+	rm -f qrq.exe qrq test_score test_callbase test_practice test_history test_callbase.qcb test_history.csv toplist-old *~ *.o
 	rm -rf Summary
 	rm -rf qrq.app
 
@@ -188,10 +188,14 @@ test_callbase: tests/test_callbase.c callbase.c callbase.h
 test_practice: tests/test_practice.c practice.c practice.h
 	$(CC) -std=c17 -Wall -Wextra -Wpedantic -Werror -I. -o $@ tests/test_practice.c practice.c
 
-check: test_score test_callbase test_practice
+test_history: tests/test_history.c history.c history.h
+	$(CC) -std=c17 -Wall -Wextra -Wpedantic -Werror -I. -o $@ tests/test_history.c history.c
+
+check: test_score test_callbase test_practice test_history
 	./test_score
 	./test_callbase
 	./test_practice
+	./test_history
 
 dist:
 	sed 's/Version [0-9].[0-9].[0-9]/Version $(VERSION)/g' ../README > README
@@ -199,7 +203,7 @@ dist:
 	rm -f ../releases/qrq-$(VERSION).tar.gz
 	rm -rf ../releases/qrq-$(VERSION)
 	mkdir qrq-$(VERSION)
-	cp qrq.png qrqscore qrq.c score.c score.h callbase.c callbase.h practice.c practice.h qrqrc callbase.qcb toplist \
+	cp qrq.png qrqscore qrq.c score.c score.h callbase.c callbase.h practice.c practice.h history.c history.h qrqrc callbase.qcb toplist \
 		../AUTHORS ../ChangeLog README ../COPYING qrq.1 Makefile qrqinstaller.nsi \
 		english.qcb cwops.qcb qrq.ico qrq.rc \
 		qrq-$(VERSION)

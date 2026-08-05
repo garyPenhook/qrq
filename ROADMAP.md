@@ -51,7 +51,8 @@ practice.
 
 ## Phase 4: Feedback and statistics
 
-- Record response time and per-item accuracy in a versioned history format.
+- [~] Record response time and per-item accuracy in a versioned history format.
+  Versioned local CSV now records each session; per-item response timing remains.
 - Add in-program score, speed, and accuracy trends without requiring gnuplot.
 - Add character-confusion and frequently-missed-item views.
 - Support history export and import.
