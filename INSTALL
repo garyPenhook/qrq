@@ -29,7 +29,7 @@ which will produce builds for Linux and Win32.
 Step by Step instructions
 -------------------------
 
-1. make [DESTDIR=/usr] [USE_PA=NO] [USE_WIN32=NO] [USE_CA=NO] [OSX_PLATFORM=NO] [OSX_BUNDLE=YES]
+1. make [PREFIX=/usr] [USE_PA=NO] [USE_WIN32=NO] [USE_CA=NO] [OSX_PLATFORM=NO] [OSX_BUNDLE=YES]
 
 Compiles qrq.
 
@@ -54,12 +54,13 @@ which are also in the current directory.
 
 At your option, you can install 'qrq' globally:
 
-2. make install [DESTDIR=/usr] [USE_CA=NO] [OSX_PLATFORM=NO] [OSX_BUNDLE=YES]
+2. make install [PREFIX=/usr] [DESTDIR=] [USE_CA=NO] [OSX_PLATFORM=NO] [OSX_BUNDLE=YES]
 
-By default, DESTDIR=/usr, so the executable will be in /usr/bin, the
-callsign database in /usr/share/qrq/ and so on.  You can specify any
-other destination directory. However, if you build for OSX and have
-OSX_BUNDLE=YES, then make install will *not* install into DESTDIR but
+By default, PREFIX=/usr, so the executable will be in /usr/bin, the
+callsign database in /usr/share/qrq/ and so on. Set PREFIX to install to a
+different location; set DESTDIR to stage a package without changing QRQ's
+runtime resource location. However, if you build for OSX and have
+OSX_BUNDLE=YES, then make install will *not* install into PREFIX but
 will instead make a bundle called qrq.app in the current directory.
 You can then drag and drop the qrq.app into your Applications folder if
 you wish. 

@@ -67,8 +67,8 @@ typedef int AUDIO_HANDLE;
 
 #define CALL_MAX    28    /* maximum allowed length of a call/word. limit to 28 so we can fit word + correction into the window */
 
-#ifndef DESTDIR
-#	define DESTDIR "/usr"
+#ifndef PREFIX
+#	define PREFIX "/usr"
 #endif
 
 #ifndef VERSION
@@ -252,7 +252,7 @@ WINDOW *right_w;				/* highscore list/settings		*/
 int main (int argc, char *argv[]) {
 	(void)argv;
 
-  /* if built as osx bundle set DESTDIR to Resources dir of bundle */
+  /* if built as osx bundle set the resource prefix to its Resources dir */
 #ifdef OSX_BUNDLE
   char tempdir[PATH_MAX]="";
   char* p_slash = strrchr(argv[0], '/');
@@ -263,7 +263,7 @@ int main (int argc, char *argv[]) {
   }
   strcat(destdir, "/Resources");
 #else
-  strcpy(destdir, DESTDIR);
+  strcpy(destdir, PREFIX);
 #endif
 
 	char abort = 0;
@@ -2402,8 +2402,8 @@ cleanup:
  * The can be: 
  * 1) In the current directory -> use them
  * 2) In ~/.qrq/  -> use toplist and qrqrc from there and callbase from
- *    DESTDIR/share/qrq/
- * 3) in DESTDIR/share/qrq/ -> create ~/.qrq/ and copy qrqrc and toplist
+ *    PREFIX/share/qrq/
+ * 3) in PREFIX/share/qrq/ -> create ~/.qrq/ and copy qrqrc and toplist
  *    there.
  * 4) Nowhere --> Exit.*/
 static int find_files (void) {
@@ -2435,12 +2435,12 @@ static int find_files (void) {
 	
 		/* check if there is ~/.qrq/qrqrc. If it's there, it's safe to assume
 		 * that toplist also exists at the same place and callbase exists in
-		 * DESTDIR/share/qrq/. */
+		 * PREFIX/share/qrq/. */
 
 		if ((fh = fopen(rcfilename, "r")) == NULL ) {
 			printw("... not found in %s/.qrq/. Checking %s/share/qrq..."
 							"\n", homedir, destdir);
-			/* check for the files in DESTDIR/share/qrq/. if exists, copy 
+			/* check for the files in PREFIX/share/qrq/. if exists, copy
 			 * qrqrc and toplist to ~/.qrq/  */
 
 			strcpy(tmp_rcfilename, destdir);
@@ -2459,7 +2459,7 @@ static int find_files (void) {
 				endwin();
 				exit(EXIT_FAILURE);
 			}
-			else {			/* finally found it in DESTDIR/share/qrq/ ! */
+			else {			/* finally found it in PREFIX/share/qrq/ ! */
 				/* abusing rcfilename here for something else temporarily */
 				printw("Found files in %s/share/qrq/."
 						"\nCreating directory %s/.qrq/ and copy qrqrc and"
@@ -2497,7 +2497,7 @@ static int find_files (void) {
 				strcpy(cbfilename, tmp_cbfilename);
                 strcpy(sumfilepath, homedir);
                 strcat(sumfilepath, "/.qrq/Summary");
-			} /* found in DESTDIR/share/qrq/ */
+			} /* found in PREFIX/share/qrq/ */
 		}
 		else {
 			printw("... found files in %s/.qrq/.\n", homedir);

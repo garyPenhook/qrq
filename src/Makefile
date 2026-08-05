@@ -1,7 +1,8 @@
 # qrq Makefile -- Fabian Kurz, DJ5CW -- https://fkurz.net/ham/qrq.html
 
 VERSION?=0.3.5
-DESTDIR?=/usr
+PREFIX?=/usr
+DESTDIR?=
 
 # set to YES if you want to use Core Audio
 # note that you must use Core Audio for OSX
@@ -17,7 +18,7 @@ USE_WIN32=NO
 OSX_PLATFORM=NO
 
 # set to YES if you want make install to build an OSX bundle instead of
-# installing to DESTDIR
+# installing to PREFIX
 # also directs qrq to look in bundle location for shared resources
 OSX_BUNDLE=YES
 
@@ -56,7 +57,7 @@ endif
 BUILD_INFO=" Date: $(shell date -r ../ChangeLog +%Y-%m-%dT%H:%M:%S%z)\n git branch/commit: $(shell if [ x${CI_COMMIT_REF_NAME} != x ]; then echo ${CI_COMMIT_REF_NAME} ; elif [ -e .git ] || [ -e ../.git ]; then git symbolic-ref --short HEAD ; else echo not built from git repository ; fi) / $(shell if [ x${CI_COMMIT_SHA} != x ]; then echo ${CI_COMMIT_SHA}; elif [ -e .git ] || [ -e ../.git ] ; then git rev-parse --verify HEAD ; else echo - ; fi )\n by $(USER)@$(shell hostname -f)\n OS: $(shell uname -s -r -p)\n Compiler: $(shell $(CC) --version | head -1)"
 
 # Keep backend definitions when callers add warning, sanitizer, or packaging flags.
-override CFLAGS += -D DESTDIR=\"$(DESTDIR)\" -D BUILD_INFO=\"$(BUILD_INFO)\" -D VERSION=\"$(VERSION)\" -I.
+override CFLAGS += -D PREFIX=\"$(PREFIX)\" -D BUILD_INFO=\"$(BUILD_INFO)\" -D VERSION=\"$(VERSION)\" -I.
 
 ifeq ($(USE_CA), YES)
 		CC=clang
@@ -127,45 +128,47 @@ uninstall:
 else
 
 install: qrq
-	${INSTALL} -d -v                      $(DESTDIR)/share/qrq/
-	${INSTALL} -d -v                      $(DESTDIR)/share/man/man1/
-	${INSTALL} -d -v                      $(DESTDIR)/bin/
-	${INSTALL} -s -m 0755 qrq             $(DESTDIR)/bin/
-	${INSTALL}    -m 0755 qrqscore        $(DESTDIR)/bin/
-	${INSTALL}    -m 0644 qrq.1           $(DESTDIR)/share/man/man1/
-	${INSTALL}    -m 0644 callbase.qcb    $(DESTDIR)/share/qrq/
-	${INSTALL}    -m 0644 english.qcb     $(DESTDIR)/share/qrq/
-	${INSTALL}    -m 0644 cwops.qcb       $(DESTDIR)/share/qrq/
-	${INSTALL}    -m 0644 qrqrc           $(DESTDIR)/share/qrq/
-	${INSTALL}    -m 0644 toplist         $(DESTDIR)/share/qrq/
+	${INSTALL} -d -v                      $(DESTDIR)$(PREFIX)/share/qrq/
+	${INSTALL} -d -v                      $(DESTDIR)$(PREFIX)/share/man/man1/
+	${INSTALL} -d -v                      $(DESTDIR)$(PREFIX)/bin/
+	${INSTALL} -s -m 0755 qrq             $(DESTDIR)$(PREFIX)/bin/
+	${INSTALL}    -m 0755 qrqscore        $(DESTDIR)$(PREFIX)/bin/
+	${INSTALL}    -m 0644 qrq.1           $(DESTDIR)$(PREFIX)/share/man/man1/
+	${INSTALL}    -m 0644 callbase.qcb    $(DESTDIR)$(PREFIX)/share/qrq/
+	${INSTALL}    -m 0644 english.qcb     $(DESTDIR)$(PREFIX)/share/qrq/
+	${INSTALL}    -m 0644 cwops.qcb       $(DESTDIR)$(PREFIX)/share/qrq/
+	${INSTALL}    -m 0644 qrqrc           $(DESTDIR)$(PREFIX)/share/qrq/
+	${INSTALL}    -m 0644 toplist         $(DESTDIR)$(PREFIX)/share/qrq/
 
 	
 uninstall:
-	rm -f $(DESTDIR)/bin/qrq
-	rm -f $(DESTDIR)/bin/qrqscore
-	rm -f $(DESTDIR)/share/man/man1/qrq.1
-	rm -f $(DESTDIR)/share/qrq/callbase.qcb
-	rm -f $(DESTDIR)/share/qrq/english.qcb
-	rm -f $(DESTDIR)/share/qrq/qrqrc
-	rm -f $(DESTDIR)/share/qrq/toplist
-	rmdir $(DESTDIR)/share/qrq/
+	rm -f $(PREFIX)/bin/qrq
+	rm -f $(PREFIX)/bin/qrqscore
+	rm -f $(PREFIX)/share/man/man1/qrq.1
+	rm -f $(PREFIX)/share/qrq/callbase.qcb
+	rm -f $(PREFIX)/share/qrq/english.qcb
+	rm -f $(PREFIX)/share/qrq/cwops.qcb
+	rm -f $(PREFIX)/share/qrq/qrqrc
+	rm -f $(PREFIX)/share/qrq/toplist
+	rmdir $(PREFIX)/share/qrq/
 
 endif
 
 package: qrq
 	export CODESIGN_ALLOCATE=/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/codesign_allocate; ldid -s qrq
 	rm -rf qrq-pkg
-	${INSTALL} -d -v                      qrq-pkg/$(DESTDIR)/share/qrq/
-	${INSTALL} -d -v                      qrq-pkg/$(DESTDIR)/share/man/man1/
-	${INSTALL} -d -v                      qrq-pkg/$(DESTDIR)/bin/
+	${INSTALL} -d -v                      qrq-pkg$(PREFIX)/share/qrq/
+	${INSTALL} -d -v                      qrq-pkg$(PREFIX)/share/man/man1/
+	${INSTALL} -d -v                      qrq-pkg$(PREFIX)/bin/
 	${INSTALL} -d -v                      qrq-pkg/DEBIAN/
-	${INSTALL} -s -m 0755 qrq             qrq-pkg/$(DESTDIR)/bin/
-	${INSTALL}    -m 0755 qrqscore        qrq-pkg/$(DESTDIR)/bin/
-	${INSTALL}    -m 0644 qrq.1           qrq-pkg/$(DESTDIR)/share/man/man1/
-	${INSTALL}    -m 0644 callbase.qcb    qrq-pkg/$(DESTDIR)/share/qrq/
-	${INSTALL}    -m 0644 english.qcb     qrq-pkg/$(DESTDIR)/share/qrq/
-	${INSTALL}    -m 0644 qrqrc           qrq-pkg/$(DESTDIR)/share/qrq/
-	${INSTALL}    -m 0644 toplist         qrq-pkg/$(DESTDIR)/share/qrq/
+	${INSTALL} -s -m 0755 qrq             qrq-pkg$(PREFIX)/bin/
+	${INSTALL}    -m 0755 qrqscore        qrq-pkg$(PREFIX)/bin/
+	${INSTALL}    -m 0644 qrq.1           qrq-pkg$(PREFIX)/share/man/man1/
+	${INSTALL}    -m 0644 callbase.qcb    qrq-pkg$(PREFIX)/share/qrq/
+	${INSTALL}    -m 0644 english.qcb     qrq-pkg$(PREFIX)/share/qrq/
+	${INSTALL}    -m 0644 cwops.qcb       qrq-pkg$(PREFIX)/share/qrq/
+	${INSTALL}    -m 0644 qrqrc           qrq-pkg$(PREFIX)/share/qrq/
+	${INSTALL}    -m 0644 toplist         qrq-pkg$(PREFIX)/share/qrq/
 	${INSTALL}    -m 0644 control         qrq-pkg/DEBIAN/
 	export COPYFILE_DISABLE=1; export COPY_EXTENDED_ATTRIBUTES_DISABLE=1; dpkg-deb -b qrq-pkg cydiastore_com.kb1ooo.qrq_v$(shell grep ^Version: control | cut -d ' ' -f 2).deb
 	$(SCP) cydiastore_com.kb1ooo.qrq_v$(shell grep ^Version: control | cut -d ' ' -f 2).deb $(IPHONE_HOST):/tmp

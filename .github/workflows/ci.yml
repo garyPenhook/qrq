@@ -57,7 +57,7 @@ jobs:
       - name: Strict C17 syntax check
         run: |
           cc -std=c17 -D_POSIX_C_SOURCE=200809L -DOSS \
-            '-DDESTDIR="/usr"' '-DVERSION="0.3.5"' -I src \
+            '-DPREFIX="/usr"' '-DVERSION="0.3.5"' -I src \
             -Wall -Wextra -Wpedantic -Wformat=2 -Wstrict-prototypes -Werror \
             -fsyntax-only src/qrq.c src/score.c src/callbase.c src/oss.c
 
