@@ -38,15 +38,16 @@ INSTALL ?= install
 
 BUILD_INFO=" Date: $(shell date -r ../ChangeLog +%Y-%m-%dT%H:%M:%S%z)\n git branch/commit: $(shell if [ x${CI_COMMIT_REF_NAME} != x ]; then echo ${CI_COMMIT_REF_NAME} ; elif [ -e .git ] || [ -e ../.git ]; then git symbolic-ref --short HEAD ; else echo not built from git repository ; fi) / $(shell if [ x${CI_COMMIT_SHA} != x ]; then echo ${CI_COMMIT_SHA}; elif [ -e .git ] || [ -e ../.git ] ; then git rev-parse --verify HEAD ; else echo - ; fi )\n by $(USER)@$(shell hostname -f)\n OS: $(shell uname -s -r -p)\n Compiler: $(shell $(CC) --version | head -1)"
 
-CFLAGS:=$(CFLAGS) -D DESTDIR=\"$(DESTDIR)\" -D BUILD_INFO=\"$(BUILD_INFO)\" -D VERSION=\"$(VERSION)\" -I.
+# Keep backend definitions when callers add warning, sanitizer, or packaging flags.
+override CFLAGS += -D DESTDIR=\"$(DESTDIR)\" -D BUILD_INFO=\"$(BUILD_INFO)\" -D VERSION=\"$(VERSION)\" -I.
 
 ifeq ($(USE_CA), YES)
 		CC=clang
 		OBJECTS=qrq.o coreaudio.o
-		CFLAGS:=$(CFLAGS) -D CA -std=c99 -pthread
+		override CFLAGS += -D CA -std=c99 -pthread
 		ifeq ($(OSX_PLATFORM), YES)
-			LDFLAGS:=$(LDFLAGS) -framework AudioUnit -framework CoreServices  -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=10.5 -lcurses
-			CFLAGS:=$(CFLAGS) -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=10.5
+			override LDFLAGS += -framework AudioUnit -framework CoreServices  -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=10.5 -lcurses
+			override CFLAGS += -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=10.5
 			ifeq ($(OSX_BUNDLE), YES)
 				CFLAGS:=$(CFLAGS) -D OSX_BUNDLE
 			endif
@@ -59,17 +60,17 @@ ifeq ($(USE_CA), YES)
 			SSH=ssh -p2222
 		endif
 else ifeq ($(USE_PA), YES)
-		CFLAGS:=$(CFLAGS) -D PA -pthread
-		LDFLAGS:=$(LDFLAGS) -lpthread -lpulse-simple -lpulse -lncurses
+		override CFLAGS += -D PA -pthread
+		override LDFLAGS += -lpthread -lpulse-simple -lpulse -lncurses
 		OBJECTS=qrq.o pulseaudio.o
 else ifeq ($(USE_WIN32), YES)
-		CFLAGS:=$(CFLAGS) -D WIN32 -Iinclude -Iinclude/ncursesw -DNCURSES_STATIC
-		LDFLAGS:=$(LDFLAGS) -lwinmm -lpthread
+		override CFLAGS += -D WIN32 -Iinclude -Iinclude/ncursesw -DNCURSES_STATIC
+		override LDFLAGS += -lwinmm -lpthread
 		OBJECTS=qrq.o qrq.res lib/libncursesw.a
 else
 		OBJECTS=qrq.o oss.o
-		LDFLAGS:=$(LDFLAGS) -lpthread -lncurses
-		CFLAGS:=$(CFLAGS) -D OSS
+		override LDFLAGS += -lpthread -lncurses
+		override CFLAGS += -D OSS
 endif
 
 all: qrq

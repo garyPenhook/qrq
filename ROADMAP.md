@@ -25,7 +25,8 @@ practice.
 ## Phase 2: Build and release engineering
 
 - [x] Add GCC and Clang builds plus focused cppcheck analysis in GitHub Actions.
-- Add strict warning builds plus ASan/UBSan jobs.
+- [x] Add ASan/UBSan build and command-line smoke-test coverage.
+- Add strict warning builds.
 - Detect ncurses and audio dependencies with `pkg-config`.
 - Add Linux, macOS, and MinGW CI.
 - Separate install prefix from packaging `DESTDIR`.
