@@ -73,9 +73,9 @@ PulseAudio has not been built locally because `pulse/simple.h` and the
    - check `pa_simple_write()` and `pa_simple_drain()` results.
    This code remains unbuilt locally because PulseAudio development headers are
    not installed.
-4. [ ] Remove the `sending_complete` data race. Prefer a small audio/session state
-   abstraction using a mutex/condition variable or a proven cross-platform
-   synchronization layer; `volatile` is not a valid fix.
+4. [x] Remove the `sending_complete` data race. POSIX builds use a mutex and
+   Windows builds use Interlocked operations; repeat playback also resets the
+   state before starting its worker.
 5. [x] Fix callbase ownership. `read_callbase()` now tracks allocated rows,
    frees every string on reload, and safely cleans up after a partial
    allocation failure.

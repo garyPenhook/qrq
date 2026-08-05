@@ -104,7 +104,12 @@ static char cblist[100][PATH_MAX];
 static char mycall[15]="DJ5CW";			/* mycall. will be read from qrqrc */
 static char dspdevice[PATH_MAX]="/dev/dsp";	/* will also be read from qrqrc */
 static int score = 0;					/* qrq score */
-static int sending_complete;			/* global lock for "enter" while sending */
+#ifdef WIN_THREADS
+static volatile LONG sending_complete = 1;
+#else
+static int sending_complete = 1;
+static pthread_mutex_t sending_complete_mutex = PTHREAD_MUTEX_INITIALIZER;
+#endif
 static int callnr = 0;					/* nr of actual call in attempt */
 static int initialspeed=200;			/* initial speed. to be read from file*/
 static int mincharspeed=0;				/* min. char. speed, below: farnsworth*/
@@ -170,6 +175,30 @@ static void start_summary_file();
 static void close_summary_file();
 static int validchar(int c);
 static void free_calls(void);
+
+/* The audio worker and ncurses input loop run concurrently.  Do not access
+ * this state directly: a plain int (or volatile int) is a data race. */
+static void set_sending_complete(int complete) {
+#ifdef WIN_THREADS
+	InterlockedExchange(&sending_complete, complete ? 1 : 0);
+#else
+	pthread_mutex_lock(&sending_complete_mutex);
+	sending_complete = complete;
+	pthread_mutex_unlock(&sending_complete_mutex);
+#endif
+}
+
+static int is_sending_complete(void) {
+#ifdef WIN_THREADS
+	return InterlockedCompareExchange(&sending_complete, 0, 0) != 0;
+#else
+	int complete;
+	pthread_mutex_lock(&sending_complete_mutex);
+	complete = sending_complete;
+	pthread_mutex_unlock(&sending_complete_mutex);
+	return complete;
+#endif
+}
 
 
 #ifdef WIN_THREADS
@@ -472,7 +501,7 @@ while (status == 1) {
 		/* starting the morse output in a separate process to make keyboard
 		 * input and echoing at the same time possible */
 		
-		sending_complete = 0;	
+		set_sending_complete(0);
 #ifdef WIN_THREADS
 		cwthread = (HANDLE) _beginthreadex( NULL, 0, morse,calls[i],0, NULL);
 #else
@@ -495,9 +524,11 @@ while (status == 1) {
 #ifdef WIN_THREADS
 			WaitForSingleObject(cwthread,INFINITE);
 			CloseHandle(cwthread);
+			set_sending_complete(0);
 			cwthread = (HANDLE) _beginthreadex( NULL, 0, morse,calls[i],0, NULL);
 #else
 			pthread_join(cwthread, NULL);
+			set_sending_complete(0);
 			j = pthread_create(&cwthread, NULL, &morse, calls[i]);	
 			thread_fail(j);
 #endif	
@@ -509,11 +540,13 @@ while (status == 1) {
 #ifdef WIN_THREADS
 			WaitForSingleObject(cwthread,INFINITE);
 			CloseHandle(cwthread);
+			set_sending_complete(0);
 			cwthread = (HANDLE) _beginthreadex( NULL, 0, morse,previouscall,0, NULL);
 			WaitForSingleObject(cwthread,INFINITE);
 			CloseHandle(cwthread);
 #else
 			pthread_join(cwthread, NULL);
+			set_sending_complete(0);
 			j = pthread_create(&cwthread, NULL, &morse, previouscall);	
 			thread_fail(j);
 			pthread_join(cwthread, NULL);
@@ -884,7 +917,7 @@ static int readline(WINDOW *win, int y, int x, char *line, int capitals, int len
 	
 	while (1) {
 		c = wgetch(win);
-		if (c == '\n' && sending_complete)
+		if (c == '\n' && is_sending_complete())
 			break;
 
 		if (validchar(c) && strlen(line) < (size_t) len) {
@@ -1597,7 +1630,7 @@ static void *morse(void *arg) {
 
 #ifdef PA
 	if (dsp_fd == NULL) {
-		sending_complete = 1;
+		set_sending_complete(1);
 		return NULL;
 	}
 #endif
@@ -1725,14 +1758,14 @@ static void *morse(void *arg) {
 	write_audio(dsp_fd, full_buf, (int) full_bufpos);
 	close_audio(dsp_fd);
 #endif
-	sending_complete = 1;
+	set_sending_complete(1);
 	return NULL;
 
 audio_error:
 #ifdef OSS
 	(void) close_audio(dsp_fd);
 #endif
-	sending_complete = 1;
+	set_sending_complete(1);
 	return NULL;
 }
 
