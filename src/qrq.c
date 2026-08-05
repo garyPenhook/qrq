@@ -99,6 +99,7 @@ typedef void *AUDIO_HANDLE;
 #include "callbase.h"
 #include "practice.h"
 #include "history.h"
+#include "config.h"
 
 /* callsign array will be dynamically allocated */
 static char **calls = NULL;
@@ -117,6 +118,7 @@ static const char *codetable[] = {
 /* List of available callbase files. Probably no need to do dynamic memory allocation for that list.... */
 
 static char cblist[100][PATH_MAX];
+static size_t cblist_count = 0;
 
 static char mycall[15]="DJ5CW";			/* mycall. will be read from qrqrc */
 static char dspdevice[PATH_MAX]="/dev/dsp";	/* will also be read from qrqrc */
@@ -137,6 +139,7 @@ static int speeddownstep=10;			/* speed decrease after incorrect copies */
 static int stoponerror=0;               /* after an error, stop and wait for 2nd enter */
 static int freq=800;					/* current cw sidetone freq */
 static int errornr=0;					/* number of errors in attempt */
+static size_t displayed_errors=0;		/* errors placed in the current display */
 static int p=0;							/* position of cursor, relative to x */
 static int status=1;					/* 1= attempt, 2=config */
 static int mode=1;						/* 0 = overwrite, 1 = insert */
@@ -299,7 +302,9 @@ int main (int argc, char *argv[]) {
 	size_t selected_index;
 	int completedcalls = 0;
 	int attemptaccuracy;
+	int sessioneligible;
 	int toplist_score;
+	int made_error;
 	int i=0,j=0,k=0;						/* counter etc. */
 	int attempt_limit;
 	char previouscall[CALL_MAX + 1]="";
@@ -468,6 +473,7 @@ while (status == 1) {
 	
 	/* reset */
 	maxspeed = errornr = score = completedcalls = 0;
+	displayed_errors = 0;
 	speed = initialspeed;
 	
 	/* prompt for own callsign */
@@ -556,7 +562,8 @@ while (status == 1) {
 		pthread_join(cwthread, NULL);
 #endif	
 		/* select an unused callsign from the calls-array */
-		if (reviewmisses && qrq_review_queue_take(&review_queue, &selected_index)) {
+		if (reviewmisses && callnr % QRQ_REVIEW_INTERVAL == 0 &&
+				qrq_review_queue_take(&review_queue, &selected_index)) {
 			if (selected_index > (size_t)INT_MAX) {
 				fprintf(stderr, "Review queue contains an invalid callbase index.\n");
 				break;
@@ -664,13 +671,17 @@ while (status == 1) {
 		}
 		
 		tmp[0]='\0';
-		score += calc_score(calls[i], input, speed, tmp, f6pressed);
+		score = qrq_score_accumulate(score,
+				calc_score(calls[i], input, speed, tmp, f6pressed));
 		completedcalls++;
 		update_score();
-		if (strcmp(tmp, "-")) {			/* made an error */
-			if (call_mistakes[i] != UCHAR_MAX) {
-				call_mistakes[i]++;
-			}
+		made_error = strcmp(tmp, "-") != 0;
+		if (qrq_practice_record_result((size_t)nrofcalls, call_used,
+				call_mistakes, (size_t)i, !made_error, adaptiveselection) != 0) {
+			fprintf(stderr, "Unable to record practice result.\n");
+			break;
+		}
+		if (made_error) {
 			if (reviewmisses && qrq_review_queue_push(&review_queue, (size_t)i) != 0) {
 				fprintf(stderr, "Unable to queue missed call for review.\n");
 			}
@@ -681,19 +692,18 @@ while (status == 1) {
 		input[0]='\0';
 		strncpy(previouscall, calls[i], CALL_MAX);
 		previousfreq = freq;
-		call_used[i] = 1;
 	}
 
     close_summary_file();
 	attemptaccuracy = qrq_practice_accuracy((size_t)completedcalls, (size_t)errornr);
-	toplist_score = score;
-	if (accuracytarget != 0 && attemptaccuracy < accuracytarget) {
-		toplist_score = 0;
-	}
+	sessioneligible = qrq_practice_session_eligible(attemptvalid,
+			(size_t)completedcalls, (size_t)sessionlength, attemptaccuracy,
+			accuracytarget);
+	toplist_score = sessioneligible ? score : 0;
 	if (qrq_history_append(historyfilename, &(struct qrq_history_entry){
 			.timestamp = time(NULL), .callsign = mycall, .calls = completedcalls,
 			.errors = errornr, .score = score, .max_speed = maxspeed,
-			.eligible = toplist_score != 0}) != 0) {
+			.eligible = sessioneligible}) != 0) {
 		fprintf(stderr, "Unable to record session history in %s.\n", historyfilename);
 	}
 
@@ -833,7 +843,9 @@ while ((j = getch()) != 0) {
 			unlimitedattempt = 0;
 			break;
 		case KEY_UP: 
-			initialspeed += 10;
+			if (initialspeed <= QRQ_SPEED_MAX - 10) {
+				initialspeed += 10;
+			}
 			break;
 		case KEY_DOWN:
 			if (initialspeed > 10) {
@@ -841,15 +853,19 @@ while ((j = getch()) != 0) {
 			}
 			break;
 		case KEY_RIGHT:
-			mincharspeed += 10;
+			if (mincharspeed <= QRQ_SPEED_MAX - 10) {
+				mincharspeed += 10;
+			}
 			break;
 		case KEY_LEFT:
-			if (mincharspeed > 10) {
+			if (mincharspeed >= 10) {
 				mincharspeed -= 10;
 			}
 			break;
 		case KEY_PPAGE:
-			speedupstep += 2;
+			if (speedupstep <= QRQ_SPEED_MAX - 2) {
+				speedupstep += 2;
+			}
 			break;
 		case KEY_NPAGE:
 			if (speedupstep >= 4) {
@@ -862,7 +878,9 @@ while ((j = getch()) != 0) {
 			}
 			break;
 		case '.':
-			speeddownstep += 2;
+			if (speeddownstep <= QRQ_SPEED_MAX - 2) {
+				speeddownstep += 2;
+			}
 			break;
 		case 'c':
 			readline(conf_w, 6, 25, mycall, CAPITALS_ON, 8);
@@ -943,6 +961,7 @@ while ((j = getch()) != 0) {
 
 
 void update_parameter_dialog (void) {
+	char session_value[16];
 
 	clear_parameter_display();
 	switch (waveform) {
@@ -965,8 +984,8 @@ void update_parameter_dialog (void) {
 	wattroff(conf_w, A_BOLD);
 	mvwprintw(conf_w,2,2, "Initial Speed:         %3d CpM / %3d WpM" 
 					"    up/down", initialspeed, initialspeed/5);
-	mvwprintw(conf_w,3,2, "Min. character Speed:  %3d CpM / %3d WpM" 
-					"    left/right", mincharspeed, mincharspeed/5);
+	mvwprintw(conf_w,3,2, "Character speed floor: %3d CpM / %3d WpM"
+					" left/right", mincharspeed, mincharspeed/5);
 	mvwprintw(conf_w,4,2, "Speed stepping:        +%3d/-%-3d CpM   "
 					" PgUp/PgDn ,/.", speedupstep, speeddownstep);
 	mvwprintw(conf_w,5,2, "CW rise/falltime (ms): %1.1f           " 
@@ -979,14 +998,15 @@ void update_parameter_dialog (void) {
 					"             w", wavename);
 	mvwprintw(conf_w,9,2, "Allow unlimited F6*:   %-3s"
 					"                  f", (f6 ? "yes" : "no"));
-	mvwprintw(conf_w,10,2, "Fixed CW speed*:       %-3s"
-					"                  s", (fixspeed ? "yes" : "no"));
-	mvwprintw(conf_w,11,2, "Session calls*:         %-5s"
-					"                [ / ] or u",
-			unlimitedattempt ? "all" : "");
-	if (!unlimitedattempt) {
-		wprintw(conf_w, "%d", sessionlength);
+	mvwprintw(conf_w,10,2, "Fixed speed*: %-3s s  Stop on error: %-3s t",
+			fixspeed ? "yes" : "no", stoponerror ? "yes" : "no");
+	if (unlimitedattempt) {
+		strcpy(session_value, "all");
 	}
+	else {
+		(void)snprintf(session_value, sizeof(session_value), "%d", sessionlength);
+	}
+	mvwprintw(conf_w,11,2, "Session calls*:        %-10s [ / ] or u", session_value);
 	if (!callnr) {
 		mvwprintw(conf_w,12,2, "Callsign database:     %-15s"
 					"      d (%ld)", basename(cbfilename),nrofcalls);
@@ -1001,7 +1021,8 @@ void update_parameter_dialog (void) {
 	mvwprintw(conf_w,15,4, ": Play CW sample");
 	mvwprintw(conf_w,15,25, ": Save config");
 	mvwprintw(conf_w,15,44, ": Exit");
-	mvwprintw(inf_w,1,1, "          * Makes scores ineligible for toplist");
+	mvwprintw(inf_w,1,1, "* Toplist-ineligible     Speed/step maximum: %d",
+			QRQ_SPEED_MAX);
 	wrefresh(conf_w);
 	wrefresh(inf_w);
 	
@@ -1131,12 +1152,16 @@ static int readline(WINDOW *win, int y, int x, char *line, int capitals, int len
 			}
 		}
 		else if (c == KEY_PPAGE && callnr && !attemptvalid) {
-			speed += 5;
+			if (speed <= QRQ_SPEED_MAX - 5) {
+				speed += 5;
+			}
 			update_score();
 			wrefresh(top_w);
 		}
 		else if (c == KEY_NPAGE && callnr && !attemptvalid) {
-			if (speed > 20) speed -= 5;
+			if (speed > 20) {
+				speed = speed >= 25 ? speed - 5 : 20;
+			}
 			update_score();
 			wrefresh(top_w);
 		}
@@ -1417,17 +1442,15 @@ static void close_summary_file (void) {
 /* print score, current speed and max speed to window */
 static int update_score(void) {
 	mvwaddstr(top_w,1,20, "Score:                         ");
-	mvwaddstr(top_w,2,20, "Speed:     CpM/    WpM, Max:    /  ");
+	mvwaddstr(top_w,2,1, "                                                          ");
 	if (attemptvalid) {
 		mvwprintw(top_w, 1, 27, "%6d", score);	
 	}
 	else {
 		mvwprintw(top_w, 1, 27, "[training mode]");	
 	}
-	mvwprintw(top_w, 2, 27, "%3d", speed);	
-	mvwprintw(top_w, 2, 35, "%3d", speed/5);	
-	mvwprintw(top_w, 2, 49, "%3d", maxspeed);	
-	mvwprintw(top_w, 2, 54, "%3d", maxspeed/5);	
+	mvwprintw(top_w, 2, 1, "Overall:%3d CpM/%3d WpM  Char:%3d CpM  Max:%3d CpM",
+			speed, speed/5, speed < mincharspeed ? mincharspeed : speed, maxspeed);
 	wrefresh(top_w);
 	return 0;
 }
@@ -1436,8 +1459,8 @@ static int update_score(void) {
  * highlighted. */
 static int show_error (char * realcall, char * wrongcall) {
 	int x=2;
-	int y = errornr;
-	int i;
+	int y;
+	size_t display_slot;
 
 	// when call_maxlen <= CALL_MAX/2, we are showing the errors in two columns, otherwise just one.
 	int max_nr_err = call_maxlen <= CALL_MAX/2 ? 30 : 15;   
@@ -1448,18 +1471,18 @@ static int show_error (char * realcall, char * wrongcall) {
 		wrongcall[max_disp_len] = '\0';
 	}
 
-	/* Screen is full of errors. Remove them and start at the beginning */
-	if (errornr >= max_nr_err) {	
-		for (i=1;i<16;i++) {
-			mvwaddstr(mid_w,i,2,"                                        "
-							 "          ");
-		}
-		errornr = y = 1;
+	display_slot = displayed_errors % (size_t)max_nr_err;
+	if (display_slot == 0 && displayed_errors != 0) {
+		clear_display();
 	}
+	displayed_errors++;
+	display_slot++;
+	y = (int)display_slot;
 
 	/* Move to second column after 15 errors if applicable */	
-	if (max_nr_err == 30 && errornr > 15) {
-		x=30; y = (errornr % 16)+1;
+	if (max_nr_err == 30 && display_slot > 15) {
+		x=30;
+		y = (int)display_slot - 15;
 	}
 
 	if (call_maxlen <= CALL_MAX / 2) {
@@ -1539,6 +1562,10 @@ static int add_to_toplist(char *mycall, int score, int maxspeed) {
 	/* For the training modes */
 	if (score == 0) {
 		return 0;
+	}
+	if (score < 0 || score > QRQ_SESSION_SCORE_MAX) {
+		fprintf(stderr, "Toplist score is outside the supported range.\n");
+		return -1;
 	}
 
 	timestamp = (long)time(NULL);
@@ -1636,359 +1663,266 @@ cleanup:
 }
 
 
-/* Read config file 
- *
- * TODO contains too much copypasta. write proper function to parse a key=value
- *
- * */
+static void config_value_error(int line, const char *key, const char *value) {
+	printw("  line %3d: invalid %s value >%s<; keeping previous value.\n",
+			line, key, value);
+}
 
-static int read_config (void) {
-	FILE *fh;
-	char tmp[80]="";
-	int i=0;
-	int k=0;
-	int line=0;
+static int config_int_value(int line, const char *key, const char *value,
+		int minimum, int maximum, int *destination) {
+	int parsed;
 
-	if ((fh = fopen(rcfilename, "r")) == NULL) {
-		endwin();
-		fprintf(stderr, "Unable to open config file %s!\n", rcfilename);
-		exit(EXIT_FAILURE);
+	if (qrq_config_parse_int(value, minimum, maximum, &parsed) != 0) {
+		config_value_error(line, key, value);
+		return -1;
 	}
-
-	while ((feof(fh) == 0) && (fgets(tmp, 80, fh) != NULL)) {
-		i=0;
-		line++;
-		tmp[strlen(tmp)-1]='\0';
-
-		/* find callsign, speed etc. 
-		 * only allow if the lines are beginning at zero, so stuff can be
-		 * commented out easily; return value if strstr must point to tmp*/
-		if(tmp == strstr(tmp,"callsign=")) {
-			while (isalnum(tmp[i] = toupper(tmp[9+i]))) {
-				i++;
-			}
-			tmp[i]='\0';
-			if (strlen(tmp) < 8) {				/* empty call allowed */
-				strcpy(mycall,tmp);
-				printw("  line  %2d: callsign: >%s<\n", line, mycall);
-			}
-			else {
-				printw("  line  %2d: callsign: >%s< too long. "
-								"Using default >%s<.\n", line, tmp, mycall);
-			}
-		}
-		else if (tmp == strstr(tmp,"initialspeed=")) {
-			while (isdigit(tmp[i] = tmp[13+i])) {
-				i++;
-			}
-			tmp[i]='\0';
-			i = atoi(tmp);
-			if (i > 9) {
-				initialspeed = speed = i;
-				printw("  line  %2d: initial speed: %d\n", line, initialspeed);
-			}
-			else {
-				printw("  line  %2d: initial speed: %d invalid (range: 10..oo)."
-								" Using default %d.\n",line,  i, initialspeed);
-			}
-		}
-		else if (tmp == strstr(tmp,"mincharspeed=")) {
-			while (isdigit(tmp[i] = tmp[13+i])) {
-				i++;
-			}
-			tmp[i]='\0';
-			if ((i = atoi(tmp)) > 0) {
-				mincharspeed = i;
-				printw("  line  %2d: min.char.speed: %d\n", line, mincharspeed);
-			} /* else ignore */
-		}
-		else if (tmp == strstr(tmp,"speedstep=")) {
-			while (isgraph(tmp[i] = tmp[strlen("speedstep=")+i])) {
-				i++;
-			}
-			tmp[i]='\0';
-			if ((i = atoi(tmp)) > 0) {
-				speedupstep = speeddownstep = i;
-				printw("  line  %2d: legacy speed step: %d\n", line, i);
-			}
-			else {
-				printw("  line  %2d: speed step: >%s< invalid. "
-								"Using defaults +%d/-%d.\n", line, tmp,
-								speedupstep, speeddownstep);
-			}
-		}
-		else if (tmp == strstr(tmp,"speedupstep=")) {
-			while (isdigit((unsigned char)(tmp[i] = tmp[12+i]))) {
-				i++;
-			}
-			tmp[i]='\0';
-			if ((i = atoi(tmp)) > 0) {
-				speedupstep = i;
-				printw("  line  %2d: speed-up step: %d\n", line, speedupstep);
-			}
-		}
-		else if (tmp == strstr(tmp,"speeddownstep=")) {
-			while (isdigit((unsigned char)(tmp[i] = tmp[14+i]))) {
-				i++;
-			}
-			tmp[i]='\0';
-			if ((i = atoi(tmp)) > 0) {
-				speeddownstep = i;
-				printw("  line  %2d: speed-down step: %d\n", line, speeddownstep);
-			}
-		}
-		else if (tmp == strstr(tmp,"dspdevice=")) {
-			while (isgraph(tmp[i] = tmp[10+i])) {
-				i++;
-			}
-			tmp[i]='\0';
-			if (strlen(tmp) > 1) {
-				strcpy(dspdevice,tmp);
-				printw("  line  %2d: dspdevice: >%s<\n", line, dspdevice);
-			}
-			else {
-				printw("  line  %2d: dspdevice: >%s< invalid. "
-								"Using default >%s<.\n", line, tmp, dspdevice);
-			}
-		}
-		else if (tmp == strstr(tmp, "risetime=")) {
-			while (isdigit(tmp[i] = tmp[9+i]) || ((tmp[i] = tmp[9+i])) == '.') {
-				i++;	
-			}
-			tmp[i]='\0';
-			edge = atof(tmp);
-			printw("  line  %2d: risetime: %f\n", line, edge);
-		}
-		else if (tmp == strstr(tmp, "waveform=")) {
-			if (isdigit(tmp[i] = tmp[9+i])) {	/* read 1 char only */
-				tmp[++i]='\0';
-				waveform = atoi(tmp);
-			}
-			if ((waveform <= 3) && (waveform > 0)) {
-				printw("  line  %2d: waveform: %d\n", line, waveform);
-			}
-			else {
-				printw("  line  %2d: waveform: %d invalid. Using default.\n",
-						 line, waveform);
-				waveform = SINE;
-			}
-		}
-		else if (tmp == strstr(tmp, "constanttone=")) {
-			while (isdigit(tmp[i] = tmp[13+i])) {
-				i++;    
-			}
-			tmp[i]='\0';
-			k = 0; 
-			k = atoi(tmp); 							/* constanttone */
-			if ( (k*k) > 1) {
-				printw("  line  %2d: constanttone: %s invalid. "
-							"Using default %d.\n", line, tmp, constanttone);
-			}
-			else {
-				constanttone = k ;
-				printw("  line  %2d: constanttone: %d\n", line, constanttone);
-			}
-        }
-        else if (tmp == strstr(tmp, "ctonefreq=")) {
-			while (isdigit(tmp[i] = tmp[10+i])) {
-            	i++;    
-			}
-			tmp[i]='\0';
-			k = 0; 
-			k = atoi(tmp);							/* ctonefreq */
-			if ( (k > 1600) || (k < 100) ) {
-				printw("  line  %2d: ctonefreq: %s invalid. "
-					"Using default %d.\n", line, tmp, ctonefreq);
-			}
-			else {
-				ctonefreq = k ;
-				printw("  line  %2d: ctonefreq: %d\n", line, ctonefreq);
-			}
-		}
-		else if (tmp == strstr(tmp, "volume=")) {
-			while (isdigit((unsigned char)(tmp[i] = tmp[7 + i]))) {
-				i++;
-			}
-			tmp[i] = '\0';
-			k = atoi(tmp);
-			if (k >= 0 && k <= 100) {
-				volume = k;
-				printw("  line  %2d: volume: %d%%\n", line, volume);
-			}
-		}
-		else if (tmp == strstr(tmp, "qrnlevel=")) {
-			k = atoi(tmp + 9);
-			if (k >= 0 && k <= 100) qrnlevel = k;
-		}
-		else if (tmp == strstr(tmp, "minpitch=")) {
-			k = atoi(tmp + 9);
-			if (k >= 100 && k <= maxpitch) minpitch = k;
-		}
-		else if (tmp == strstr(tmp, "maxpitch=")) {
-			k = atoi(tmp + 9);
-			if (k >= minpitch && k <= 4000) maxpitch = k;
-		}
-		else if (tmp == strstr(tmp, "f6=")) {
-			f6=0;
-			if (tmp[3] == '1') {
-				f6 = 1;
-			}
-			printw("  line  %2d: unlimited f6: %s\n", line, (f6 ? "yes":"no"));
-        }
-		else if (tmp == strstr(tmp, "fixspeed=")) {
-			fixspeed=0;
-			if (tmp[9] == '1') {
-				fixspeed = 1;
-			}
-			printw("  line  %2d: fixed speed:  %s\n", line, (fixspeed ? "yes":"no"));
-        }
-		else if (tmp == strstr(tmp, "stoponerror=")) {
-			stoponerror = 0;
-			if (tmp[12] == '1') {
-				stoponerror = 1;
-			}
-			printw("  line  %2d: stoponerror:  %s\n", line, (stoponerror ? "yes":"no"));
-        }
-		else if (tmp == strstr(tmp, "unlimitedattempt=")) {
-			unlimitedattempt=0;
-			if (tmp[17] == '1') {
-				unlimitedattempt= 1;
-			}
-			printw("  line  %2d: unlim. att.:  %s\n", line, (unlimitedattempt ? "yes":"no"));
-        }
-		else if (tmp == strstr(tmp, "sessionlength=")) {
-			while (isdigit((unsigned char)(tmp[i] = tmp[14+i]))) {
-				i++;
-			}
-			tmp[i] = '\0';
-			k = atoi(tmp);
-			if (k > 0) {
-				sessionlength = k;
-				printw("  line  %2d: session length: %d\n", line, sessionlength);
-			}
-			else {
-				printw("  line  %2d: session length: >%s< invalid. Using default %d.\n",
-						line, tmp, sessionlength);
-			}
-        }
-		else if (tmp == strstr(tmp, "adaptiveselection=")) {
-			adaptiveselection = tmp[18] == '1';
-			printw("  line  %2d: adaptive selection: %s\n", line,
-					adaptiveselection ? "yes" : "no");
-		}
-		else if (tmp == strstr(tmp, "reviewmisses=")) {
-			reviewmisses = tmp[13] == '1';
-			printw("  line  %2d: review misses: %s\n", line,
-					reviewmisses ? "yes" : "no");
-		}
-		else if (tmp == strstr(tmp, "callprefixes=")) {
-			while (i < (int)sizeof(callprefixes) - 1 && i < (int)sizeof(tmp) - 14 &&
-					isgraph((unsigned char)(tmp[i] = (char)toupper((unsigned char)tmp[13 + i])))) {
-				i++;
-			}
-			tmp[i] = '\0';
-			strcpy(callprefixes, tmp);
-			printw("  line  %2d: call prefixes: %s\n", line,
-					callprefixes[0] == '\0' ? "all" : callprefixes);
-		}
-		else if (tmp == strstr(tmp, "digitmode=")) {
-			digitmode = tmp[10] - '0';
-			if (digitmode < 0 || digitmode > 2) digitmode = 0;
-			printw("  line  %2d: digit mode: %d\n", line, digitmode);
-		}
-		else if (tmp == strstr(tmp, "portablemode=")) {
-			portablemode = tmp[13] - '0';
-			if (portablemode < 0 || portablemode > 2) portablemode = 0;
-			printw("  line  %2d: portable mode: %d\n", line, portablemode);
-		}
-		else if (tmp == strstr(tmp, "allowedchars=")) {
-			while (i < (int)sizeof(allowedchars) - 1 && i < (int)sizeof(tmp) - 14 &&
-					isgraph((unsigned char)(tmp[i] = (char)toupper((unsigned char)tmp[13 + i])))) {
-				i++;
-			}
-			tmp[i] = '\0';
-			strcpy(allowedchars, tmp);
-			printw("  line  %2d: allowed characters: %s\n", line,
-					allowedchars[0] == '\0' ? "all" : allowedchars);
-		}
-		else if (tmp == strstr(tmp, "accuracytarget=")) {
-			while (isdigit((unsigned char)(tmp[i] = tmp[15 + i]))) {
-				i++;
-			}
-			tmp[i] = '\0';
-			k = atoi(tmp);
-			if (k == 0 || (k >= 50 && k <= 100)) {
-				accuracytarget = k;
-				printw("  line  %2d: accuracy target: %d%%\n", line, accuracytarget);
-			}
-		}
-		else if (tmp == strstr(tmp, "sessionseed=")) {
-			char *end;
-			unsigned long seed;
-			errno = 0;
-			seed = strtoul(tmp + 12, &end, 10);
-			if (errno != 0 || seed > UINT_MAX || end == tmp + 12 || *end != '\0') {
-				sessionseed = 0;
-				printw("  line  %2d: session seed invalid; random seed enabled\n", line);
-			}
-			else {
-				sessionseed = (unsigned int)seed;
-				printw("  line  %2d: session seed: %u\n", line, sessionseed);
-			}
-		}
-		else if (tmp == strstr(tmp, "mincalllength=")) {
-			while (isdigit((unsigned char)(tmp[i] = tmp[15+i]))) {
-				i++;
-			}
-			tmp[i] = '\0';
-			k = atoi(tmp);
-			if (k >= 1 && k <= maxcalllength) {
-				mincalllength = k;
-				printw("  line  %2d: minimum call length: %d\n", line, mincalllength);
-			}
-        }
-		else if (tmp == strstr(tmp, "maxcalllength=")) {
-			while (isdigit((unsigned char)(tmp[i] = tmp[14+i]))) {
-				i++;
-			}
-			tmp[i] = '\0';
-			k = atoi(tmp);
-			if (k >= mincalllength && k <= CALL_MAX) {
-				maxcalllength = k;
-				printw("  line  %2d: maximum call length: %d\n", line, maxcalllength);
-			}
-        }
-		else if (tmp == strstr(tmp,"callbase=")) {
-			while (isgraph(tmp[i] = tmp[9+i])) {
-				i++;
-			}
-			tmp[i]='\0';
-			if (strlen(tmp) > 1) {
-				strcpy(cbfilename,tmp);
-				printw("  line  %2d: callbase:  >%s<\n", line, cbfilename);
-			}
-			else {
-				printw("  line  %2d: callbase:  >%s< invalid. "
-								"Using default >%s<.\n", line, tmp, cbfilename);
-			}
-		}
-		else if (tmp == strstr(tmp,"samplerate=")) {
-			while (isdigit(tmp[i] = tmp[11+i])) {
-				i++;
-			}
-			tmp[i]='\0';
-			samplerate = atoi(tmp);
-			printw("  line  %2d: sample rate: %ld\n", line, samplerate);
-		}
-	}
-
-	fclose(fh);
-
-	printw("Finished reading qrqrc.\n");
+	*destination = parsed;
 	return 0;
 }
 
+static int config_double_value(int line, const char *key, const char *value,
+		double minimum, double maximum, double *destination) {
+	double parsed;
 
+	if (qrq_config_parse_double(value, minimum, maximum, &parsed) != 0) {
+		config_value_error(line, key, value);
+		return -1;
+	}
+	*destination = parsed;
+	return 0;
+}
+
+static int config_string_value(int line, const char *key, const char *value,
+		char *destination, size_t capacity, int uppercase) {
+	if (qrq_config_copy_string(value, destination, capacity, uppercase) != 0) {
+		config_value_error(line, key, value);
+		return -1;
+	}
+	return 0;
+}
+
+static int config_graph_string_value(int line, const char *key,
+		const char *value, char *destination, size_t capacity) {
+	const unsigned char *cursor = (const unsigned char *)value;
+
+	while (*cursor != '\0') {
+		if (!isgraph(*cursor)) {
+			config_value_error(line, key, value);
+			return -1;
+		}
+		cursor++;
+	}
+	return config_string_value(line, key, value, destination, capacity, 1);
+}
+
+static int config_callsign_value(int line, const char *value) {
+	const unsigned char *cursor = (const unsigned char *)value;
+	size_t length = strlen(value);
+
+	if (length > 7) {
+		config_value_error(line, "callsign", value);
+		return -1;
+	}
+	while (*cursor != '\0') {
+		if (!isalnum(*cursor) && *cursor != '/') {
+			config_value_error(line, "callsign", value);
+			return -1;
+		}
+		cursor++;
+	}
+	return config_string_value(line, "callsign", value, mycall,
+			sizeof(mycall), 1);
+}
+
+static int read_config(void) {
+	char *line_buffer = NULL;
+	char *key;
+	char *value;
+	double parsed_double;
+	FILE *fh;
+	int legacy_step = speedupstep;
+	int parsed_int;
+	int line = 0;
+	int line_status;
+	int split_status;
+	int have_legacy_step = 0;
+	int have_speedup_step = 0;
+	int have_speeddown_step = 0;
+	int configured_speedup_step = speedupstep;
+	int configured_speeddown_step = speeddownstep;
+	int configured_minpitch = minpitch;
+	int configured_maxpitch = maxpitch;
+	int configured_mincalllength = mincalllength;
+	int configured_maxcalllength = maxcalllength;
+	size_t capacity = 0;
+	unsigned int parsed_seed;
+
+	fh = fopen(rcfilename, "r");
+	if (fh == NULL) {
+		endwin();
+		fprintf(stderr, "Unable to open config file %s: %s\n",
+				rcfilename, strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+	while ((line_status = qrq_config_read_line(fh, &line_buffer, &capacity)) == 1) {
+		line++;
+		split_status = qrq_config_split_line(line_buffer, &key, &value);
+		if (split_status == 0) {
+			continue;
+		}
+		if (split_status < 0) {
+			printw("  line %3d: malformed configuration line ignored.\n", line);
+			continue;
+		}
+
+		if (strcmp(key, "callsign") == 0) {
+			(void)config_callsign_value(line, value);
+		} else if (strcmp(key, "initialspeed") == 0) {
+			(void)config_int_value(line, key, value, QRQ_SPEED_MIN,
+					QRQ_SPEED_MAX, &initialspeed);
+		} else if (strcmp(key, "mincharspeed") == 0) {
+			(void)config_int_value(line, key, value, 0, QRQ_SPEED_MAX,
+					&mincharspeed);
+		} else if (strcmp(key, "speedstep") == 0) {
+			if (config_int_value(line, key, value, 1, 5000, &parsed_int) == 0) {
+				legacy_step = parsed_int;
+				have_legacy_step = 1;
+			}
+		} else if (strcmp(key, "speedupstep") == 0) {
+			if (config_int_value(line, key, value, 1, 5000, &parsed_int) == 0) {
+				configured_speedup_step = parsed_int;
+				have_speedup_step = 1;
+			}
+		} else if (strcmp(key, "speeddownstep") == 0) {
+			if (config_int_value(line, key, value, 1, 5000, &parsed_int) == 0) {
+				configured_speeddown_step = parsed_int;
+				have_speeddown_step = 1;
+			}
+		} else if (strcmp(key, "dspdevice") == 0) {
+			(void)config_string_value(line, key, value, dspdevice,
+					sizeof(dspdevice), 0);
+		} else if (strcmp(key, "risetime") == 0) {
+			if (config_double_value(line, key, value, 0.1, 10.0,
+					&parsed_double) == 0) {
+				edge = parsed_double;
+			}
+		} else if (strcmp(key, "waveform") == 0) {
+			(void)config_int_value(line, key, value, SINE, SQUARE, &waveform);
+		} else if (strcmp(key, "constanttone") == 0) {
+			(void)config_int_value(line, key, value, 0, 1, &constanttone);
+		} else if (strcmp(key, "ctonefreq") == 0) {
+			(void)config_int_value(line, key, value, 100, 1600, &ctonefreq);
+		} else if (strcmp(key, "volume") == 0) {
+			(void)config_int_value(line, key, value, 0, 100, &volume);
+		} else if (strcmp(key, "qrnlevel") == 0) {
+			(void)config_int_value(line, key, value, 0, 100, &qrnlevel);
+		} else if (strcmp(key, "minpitch") == 0) {
+			(void)config_int_value(line, key, value, 100, 4000,
+					&configured_minpitch);
+		} else if (strcmp(key, "maxpitch") == 0) {
+			(void)config_int_value(line, key, value, 100, 4000,
+					&configured_maxpitch);
+		} else if (strcmp(key, "f6") == 0) {
+			(void)config_int_value(line, key, value, 0, 1, &f6);
+		} else if (strcmp(key, "fixspeed") == 0) {
+			(void)config_int_value(line, key, value, 0, 1, &fixspeed);
+		} else if (strcmp(key, "stoponerror") == 0) {
+			(void)config_int_value(line, key, value, 0, 1, &stoponerror);
+		} else if (strcmp(key, "unlimitedattempt") == 0) {
+			(void)config_int_value(line, key, value, 0, 1, &unlimitedattempt);
+		} else if (strcmp(key, "sessionlength") == 0) {
+			(void)config_int_value(line, key, value, 1, 1000000, &sessionlength);
+		} else if (strcmp(key, "adaptiveselection") == 0) {
+			(void)config_int_value(line, key, value, 0, 1, &adaptiveselection);
+		} else if (strcmp(key, "reviewmisses") == 0) {
+			(void)config_int_value(line, key, value, 0, 1, &reviewmisses);
+		} else if (strcmp(key, "callprefixes") == 0) {
+			(void)config_graph_string_value(line, key, value, callprefixes,
+					sizeof(callprefixes));
+		} else if (strcmp(key, "digitmode") == 0) {
+			(void)config_int_value(line, key, value, 0, 2, &digitmode);
+		} else if (strcmp(key, "portablemode") == 0) {
+			(void)config_int_value(line, key, value, 0, 2, &portablemode);
+		} else if (strcmp(key, "allowedchars") == 0) {
+			(void)config_graph_string_value(line, key, value, allowedchars,
+					sizeof(allowedchars));
+		} else if (strcmp(key, "accuracytarget") == 0) {
+			if (config_int_value(line, key, value, 0, 100, &parsed_int) == 0) {
+				if (parsed_int == 0 || parsed_int >= 50) {
+					accuracytarget = parsed_int;
+				} else {
+					config_value_error(line, key, value);
+				}
+			}
+		} else if (strcmp(key, "sessionseed") == 0) {
+			if (qrq_config_parse_uint(value, &parsed_seed) == 0) {
+				sessionseed = parsed_seed;
+			} else {
+				config_value_error(line, key, value);
+			}
+		} else if (strcmp(key, "mincalllength") == 0) {
+			(void)config_int_value(line, key, value, 1, CALL_MAX,
+					&configured_mincalllength);
+		} else if (strcmp(key, "maxcalllength") == 0) {
+			(void)config_int_value(line, key, value, 1, CALL_MAX,
+					&configured_maxcalllength);
+		} else if (strcmp(key, "callbase") == 0) {
+			(void)config_string_value(line, key, value, cbfilename,
+					sizeof(cbfilename), 0);
+		} else if (strcmp(key, "samplerate") == 0) {
+			if (config_int_value(line, key, value, 8000, 384000,
+					&parsed_int) == 0) {
+				samplerate = parsed_int;
+			}
+		} else {
+			printw("  line %3d: unknown option >%s< ignored.\n", line, key);
+		}
+	}
+	if (line_status < 0) {
+		int saved_errno = errno;
+		free(line_buffer);
+		(void)fclose(fh);
+		endwin();
+		fprintf(stderr, "Unable to read config file %s: %s\n",
+				rcfilename, strerror(saved_errno));
+		exit(EXIT_FAILURE);
+	}
+	free(line_buffer);
+	if (fclose(fh) != 0) {
+		endwin();
+		fprintf(stderr, "Unable to close config file %s: %s\n",
+				rcfilename, strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
+	if (have_legacy_step) {
+		speedupstep = legacy_step;
+		speeddownstep = legacy_step;
+	}
+	if (have_speedup_step) {
+		speedupstep = configured_speedup_step;
+	}
+	if (have_speeddown_step) {
+		speeddownstep = configured_speeddown_step;
+	}
+	if (configured_minpitch <= configured_maxpitch) {
+		minpitch = configured_minpitch;
+		maxpitch = configured_maxpitch;
+	} else {
+		printw("  minpitch must not exceed maxpitch; keeping %d..%d Hz.\n",
+				minpitch, maxpitch);
+	}
+	if (configured_mincalllength <= configured_maxcalllength) {
+		mincalllength = configured_mincalllength;
+		maxcalllength = configured_maxcalllength;
+	} else {
+		printw("  mincalllength must not exceed maxcalllength; keeping %d..%d.\n",
+				mincalllength, maxcalllength);
+	}
+	speed = initialspeed;
+	printw("Finished reading qrqrc.\n");
+	return 0;
+}
 static void *morse(void *arg) { 
 	char * text = arg;
 	int i,j;
@@ -2053,6 +1987,12 @@ static void *morse(void *arg) {
 	/* edge = length of rise/fall time in ms. ed = in samples */
 
 	ed = (int) (samplerate * (edge/1000.0));
+	if (ed >= dotlen) {
+		ed = dotlen - 1;
+	}
+	if (ed < 0) {
+		ed = 0;
+	}
 
 	/* the signal needs "ed" samples to reach the full amplitude and
 	 * at the end another "ed" samples to reach zero. The dots and
@@ -2061,10 +2001,21 @@ static void *morse(void *arg) {
 
 	for (i = 0; i < (int)strlen(text); i++) {
 		c = text[i];
-		if (isalpha(c)) {
+		if (c == ' ') {
+			int spacing_unit = farnsworth ? fwdotlen : fulldotlen;
+
+			/* The preceding character already contributed its three-unit
+			 * character gap. Four more units make the standard seven-unit
+			 * word gap. */
+			if (tonegen(0, 4 * spacing_unit, SILENCE) != 0) {
+				goto audio_error;
+			}
+			continue;
+		}
+		if (isalpha((unsigned char)c)) {
 			code = codetable[c-65];
 		}
-		else if (isdigit(c)) {
+		else if (isdigit((unsigned char)c)) {
 			code = codetable[c-22];
 		}
 		else if (c == '/') { 
@@ -2073,9 +2024,6 @@ static void *morse(void *arg) {
 		else if (c == '+') {
 			code = ".-.-.";
 		}
-        else if (c == ' ') {        /* space */
-            code = " ";
-        }
         else if (c == '.') {
             code = ".-.-.-";
 		}
@@ -2634,123 +2582,143 @@ cleanup:
  * 3) in PREFIX/share/qrq/ -> create ~/.qrq/ and copy qrqrc and toplist
  *    there.
  * 4) Nowhere --> Exit.*/
+static int build_path(char *destination, size_t capacity, const char *base,
+		const char *suffix) {
+	int written;
+
+	if (destination == NULL || capacity == 0 || base == NULL || suffix == NULL) {
+		errno = EINVAL;
+		return -1;
+	}
+	written = snprintf(destination, capacity, "%s%s", base, suffix);
+	if (written < 0 || (size_t)written >= capacity) {
+		errno = ENAMETOOLONG;
+		return -1;
+	}
+	return 0;
+}
+
+static int file_is_readable(const char *path) {
+	FILE *file = fopen(path, "rb");
+	int result;
+
+	if (file == NULL) {
+		return 0;
+	}
+	result = fclose(file) == 0;
+	return result;
+}
+
+static int create_directory_if_needed(const char *path) {
+	struct stat attributes;
+	int result;
+
+#ifdef WIN32
+	result = mkdir(path);
+#else
+	result = mkdir(path, 0700);
+#endif
+	if (result == 0) {
+		return 0;
+	}
+	if (errno != EEXIST || stat(path, &attributes) != 0 ||
+			!S_ISDIR(attributes.st_mode)) {
+		return -1;
+	}
+	return 0;
+}
+
 static int find_files (void) {
-	
-	FILE *fh;
-	const char *homedir = NULL;
+	const char *homedir;
+	char config_directory[PATH_MAX];
 	char tmp_rcfilename[PATH_MAX] = "";
 	char tmp_tlfilename[PATH_MAX] = "";
 	char tmp_cbfilename[PATH_MAX] = "";
+	int have_current_files;
 
 	printw("\nChecking for necessary files (qrqrc, toplist, callbase)...\n");
-	
-	if (((fh = fopen("qrqrc", "r")) == NULL) ||
-		((fh = fopen("toplist", "r")) == NULL) ||
-		((fh = fopen("callbase.qcb", "r")) == NULL)) {
-		
-		if ((homedir = getenv("HOME")) != NULL) {
-    		printw("... not found in current directory. Checking %s/.qrq/...\n", homedir);
-    		refresh();
-	    	strcat(rcfilename, homedir);
-		}
-		else {
-		    printw("... not found in current directory. Checking ./.qrq/...\n");
-    		refresh();
-	    	strcat(rcfilename, ".");
-		}
-				
-		strcat(rcfilename, "/.qrq/qrqrc");
-	
-		/* check if there is ~/.qrq/qrqrc. If it's there, it's safe to assume
-		 * that toplist also exists at the same place and callbase exists in
-		 * PREFIX/share/qrq/. */
-
-		if ((fh = fopen(rcfilename, "r")) == NULL ) {
-			printw("... not found in %s/.qrq/. Checking %s/share/qrq..."
-							"\n", homedir, destdir);
-			/* check for the files in PREFIX/share/qrq/. if exists, copy
-			 * qrqrc and toplist to ~/.qrq/  */
-
-			strcpy(tmp_rcfilename, destdir);
-			strcat(tmp_rcfilename, "/share/qrq/qrqrc");
-			strcpy(tmp_tlfilename, destdir);
-			strcat(tmp_tlfilename, "/share/qrq/toplist");
-			strcpy(tmp_cbfilename, destdir);
-			strcat(tmp_cbfilename, "/share/qrq/callbase.qcb");
-
-			if (((fh = fopen(tmp_rcfilename, "r")) == NULL) ||
-				((fh = fopen(tmp_tlfilename, "r")) == NULL) ||
-				 ((fh = fopen(tmp_cbfilename, "r")) == NULL)) {
-				printw("Sorry: Couldn't find 'qrqrc', 'toplist' and"
-			   			" 'callbase.qcb' anywhere. Exit.\n");
-				getch();
-				endwin();
-				exit(EXIT_FAILURE);
-			}
-			else {			/* finally found it in PREFIX/share/qrq/ ! */
-				/* abusing rcfilename here for something else temporarily */
-				printw("Found files in %s/share/qrq/."
-						"\nCreating directory %s/.qrq/ and copy qrqrc and"
-						" toplist there.\n", destdir, homedir);
-				strcpy(rcfilename, homedir);
-				strcat(rcfilename, "/.qrq/");
-#ifdef WIN32
-				j = mkdir(rcfilename);
-#else
-				j = mkdir(rcfilename,  0777);
-#endif
-				if (j && (errno != EEXIST)) {
-					printw("Failed to create %s! Exit.\n", rcfilename);
-					getch();
-					endwin();
-					exit(EXIT_FAILURE);
-				}
-
-				if (snprintf(tlfilename, sizeof(tlfilename), "%s/.qrq/toplist", homedir) >=
-						(int)sizeof(tlfilename) || copy_file(tmp_tlfilename, tlfilename) != 0) {
-					printw("Failed to copy toplist file.\n");
-					getch();
-					endwin();
-					exit(EXIT_FAILURE);
-				}
-				if (snprintf(rcfilename, sizeof(rcfilename), "%s/.qrq/qrqrc", homedir) >=
-						(int)sizeof(rcfilename) || copy_file(tmp_rcfilename, rcfilename) != 0) {
-					printw("Failed to copy qrqrc file.\n");
-					getch();
-					endwin();
-					exit(EXIT_FAILURE);
-				}
-				printw("Files copied. You might want to edit "
-						"qrqrc according to your needs.\n");
-				strcpy(cbfilename, tmp_cbfilename);
-                strcpy(sumfilepath, homedir);
-                strcat(sumfilepath, "/.qrq/Summary");
-			} /* found in PREFIX/share/qrq/ */
-		}
-		else {
-			printw("... found files in %s/.qrq/.\n", homedir);
-			strcpy(tlfilename, homedir);
-			strcat(tlfilename, "/.qrq/toplist");
-			strcpy(cbfilename, destdir);
-			strcat(cbfilename, "/share/qrq/callbase.qcb");
-            strcpy(sumfilepath, homedir);
-            strcat(sumfilepath, "/.qrq/Summary");
-		}
-	}
-	else {
+	have_current_files = file_is_readable("qrqrc") &&
+			file_is_readable("toplist") && file_is_readable("callbase.qcb");
+	if (have_current_files) {
 		printw("... found in current directory.\n");
-		strcpy(rcfilename, "qrqrc");
-		strcpy(tlfilename, "toplist");
-		strcpy(cbfilename, "callbase.qcb");
-        strcpy(sumfilepath, "Summary");
-	}
+		(void)config_string_value(0, "qrqrc path", "qrqrc", rcfilename,
+				sizeof(rcfilename), 0);
+		(void)config_string_value(0, "toplist path", "toplist", tlfilename,
+				sizeof(tlfilename), 0);
+		(void)config_string_value(0, "callbase path", "callbase.qcb", cbfilename,
+				sizeof(cbfilename), 0);
+		(void)config_string_value(0, "summary path", "Summary", sumfilepath,
+				sizeof(sumfilepath), 0);
+	} else {
+		homedir = getenv("HOME");
 #ifdef WIN32
-    mkdir(sumfilepath);
-#else
-    mkdir(sumfilepath, 0777);
+		if (homedir == NULL || *homedir == '\0') {
+			homedir = getenv("APPDATA");
+		}
 #endif
+		if (homedir == NULL || *homedir == '\0') {
+			homedir = ".";
+		}
+		if (build_path(config_directory, sizeof(config_directory), homedir,
+				"/.qrq") != 0 ||
+				build_path(rcfilename, sizeof(rcfilename), config_directory,
+				"/qrqrc") != 0 ||
+				build_path(tlfilename, sizeof(tlfilename), config_directory,
+				"/toplist") != 0 ||
+				build_path(sumfilepath, sizeof(sumfilepath), config_directory,
+				"/Summary") != 0 ||
+				build_path(tmp_rcfilename, sizeof(tmp_rcfilename), destdir,
+				"/share/qrq/qrqrc") != 0 ||
+				build_path(tmp_tlfilename, sizeof(tmp_tlfilename), destdir,
+				"/share/qrq/toplist") != 0 ||
+				build_path(tmp_cbfilename, sizeof(tmp_cbfilename), destdir,
+				"/share/qrq/callbase.qcb") != 0) {
+			endwin();
+			fprintf(stderr, "Resource path is too long.\n");
+			exit(EXIT_FAILURE);
+		}
+		printw("... not found in current directory. Checking %s...\n",
+				config_directory);
+		if (!file_is_readable(tmp_cbfilename) ||
+				(!file_is_readable(rcfilename) && !file_is_readable(tmp_rcfilename)) ||
+				(!file_is_readable(tlfilename) && !file_is_readable(tmp_tlfilename))) {
+			endwin();
+			fprintf(stderr, "Could not find readable qrqrc, toplist, and "
+					"callbase.qcb resources.\n");
+			exit(EXIT_FAILURE);
+		}
+		if (create_directory_if_needed(config_directory) != 0) {
+			endwin();
+			fprintf(stderr, "Unable to create configuration directory %s: %s\n",
+					config_directory, strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+		if (!file_is_readable(rcfilename) && copy_file(tmp_rcfilename, rcfilename) != 0) {
+			endwin();
+			fprintf(stderr, "Unable to copy default config to %s: %s\n",
+					rcfilename, strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+		if (!file_is_readable(tlfilename) && copy_file(tmp_tlfilename, tlfilename) != 0) {
+			endwin();
+			fprintf(stderr, "Unable to copy default toplist to %s: %s\n",
+					tlfilename, strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+		if (config_string_value(0, "callbase path", tmp_cbfilename, cbfilename,
+				sizeof(cbfilename), 0) != 0) {
+			endwin();
+			exit(EXIT_FAILURE);
+		}
+		printw("... using configuration files in %s.\n", config_directory);
+	}
+	if (create_directory_if_needed(sumfilepath) != 0) {
+		endwin();
+		fprintf(stderr, "Unable to create summary directory %s: %s\n",
+				sumfilepath, strerror(errno));
+		exit(EXIT_FAILURE);
+	}
 	refresh();
-	fclose(fh);
 	return 0;
 }
 
@@ -2921,64 +2889,90 @@ static int read_callbase(void) {
 	return (int)loaded_callbase.count;
 }
 
+static int has_qcb_suffix(const char *name) {
+	size_t length = strlen(name);
+
+	return length > 4 && name[length - 4] == '.' &&
+			tolower((unsigned char)name[length - 3]) == 'q' &&
+			tolower((unsigned char)name[length - 2]) == 'c' &&
+			tolower((unsigned char)name[length - 1]) == 'b';
+}
+
+static int callbase_is_listed(const char *path) {
+	size_t index;
+
+	for (index = 0; index < cblist_count; index++) {
+		if (strcmp(cblist[index], path) == 0) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
 void find_callbases (void) {
-	DIR *dir;
-	struct dirent *dp;
-	char tmp[PATH_MAX];
-	char path[3][PATH_MAX];
-	int i=0,j=0,k=0;
+	DIR *directory;
+	struct dirent *entry;
+	char candidate[PATH_MAX];
+	char path[3][PATH_MAX] = {{0}};
+	const char *homedir = getenv("HOME");
+	size_t path_count = 0;
+	size_t path_index;
 
-#ifndef WIN32
-		strcpy(path[0], getenv("PWD"));
-		strcat(path[0], "/");
-		strcpy(path[1], getenv("HOME"));
-		strcat(path[1], "/.qrq/");
-		strcpy(path[2], destdir);
-		strcat(path[2], "/share/qrq/");
-#else
-		strcpy(path[0], "./");
-		strcpy(path[1], getenv("APPDATA"));
-		strcat(path[1], "/qrq/");
-		strcpy(path[2], "c:\\");
+	cblist_count = 0;
+	memset(cblist, 0, sizeof(cblist));
+	if (getcwd(path[path_count], sizeof(path[path_count])) != NULL) {
+		path_count++;
+	}
+#ifdef WIN32
+	if (homedir == NULL || *homedir == '\0') {
+		homedir = getenv("APPDATA");
+	}
 #endif
-
-	for (i=0; i < 100; i++) {
-		strcpy(cblist[i], "");
+	if (homedir != NULL && *homedir != '\0' && path_count < 3 &&
+			build_path(path[path_count], sizeof(path[path_count]), homedir,
+			"/.qrq") == 0) {
+		path_count++;
+	}
+	if (path_count < 3 && build_path(path[path_count], sizeof(path[path_count]),
+			destdir, "/share/qrq") == 0) {
+		path_count++;
 	}
 
-	/* foreach paths...  */
-	for (k = 0; k < 3; k++) {
-
-		if (!(dir = opendir(path[k]))) {
+	for (path_index = 0; path_index < path_count && cblist_count < 100;
+			path_index++) {
+		directory = opendir(path[path_index]);
+		if (directory == NULL) {
 			continue;
 		}
-	
-		while ((dp = readdir(dir))) {
-			strcpy(tmp, dp->d_name);
-			i = strlen(tmp);
-			/* find *.qcb files ...  */
-			if (i>4 && tmp[i-1] == 'b' && tmp[i-2] == 'c' && tmp[i-3] == 'q') {
-				strcpy(cblist[j], path[k]);
-				strcat(cblist[j], tmp);
-				j++;
+		while (cblist_count < 100 && (entry = readdir(directory)) != NULL) {
+			int written;
+
+			if (!has_qcb_suffix(entry->d_name)) {
+				continue;
 			}
+			written = snprintf(candidate, sizeof(candidate), "%s/%s",
+					path[path_index], entry->d_name);
+			if (written < 0 || (size_t)written >= sizeof(candidate) ||
+					callbase_is_listed(candidate)) {
+				continue;
+			}
+			memcpy(cblist[cblist_count], candidate, (size_t)written + 1);
+			cblist_count++;
 		}
-	} /* for paths */
+		(void)closedir(directory);
+	}
 }
 
 
 
 void select_callbase (void) {
-	int i = 0, j = 0, k = 0;
+	int i = (int)cblist_count, j = 0, k = 0;
 	int c = 0;		/* cursor position   */
 	int p = 0;		/* page a 10 entries */
 	char* cblist_ptr;
 
 
 	curs_set(FALSE);
-
-	/* count files */
-	while (strcmp(cblist[i], "")) i++;
 
 	if (!i) {
 		mvwprintw(conf_w,10,4, "No qcb-files found!");
@@ -3001,7 +2995,7 @@ void select_callbase (void) {
 
 	/* display 10 files, highlight cursor position */
 	for (j = p*10; j < (p+1)*10; j++) {
-		if (j <= i) {
+		if (j < i) {
 				cblist_ptr = cblist[j];
 				mvwprintw(conf_w,5+(j - p*10 ),2, "  %s       ", cblist_ptr);
 		}
@@ -3028,17 +3022,17 @@ void select_callbase (void) {
 			}
 			break;
 		case '\n':
-			strcpy(cbfilename, cblist[c]);
-			nrofcalls = read_callbase();
+			(void)snprintf(cbfilename, sizeof(cbfilename), "%s", cblist[c]);
 			return;	
-			break;
+		case 27:
+		case 'q':
+		case 'Q':
+			return;
 	}
 
 	wrefresh(conf_w);
 
 	} /* while 1 */
-
-	curs_set(TRUE);
 
 }
 

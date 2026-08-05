@@ -1,4 +1,4 @@
-QRQ - yet another CW trainer - Version 0.3.5
+QRQ - yet another CW trainer - Version 0.3.6
 
 Project website: https://fkurz.net/ham/qrq.html
 -----------------------------------------------------------------------------
@@ -21,10 +21,16 @@ How to use it
 
 Using qrq is simple: qrq sends 50 random calls from a database. After each
 call, it waits for the user to enter what he heard and compares the entered
-callsign with the one sent. If the callsign is copied correctly, the speed is
-increased by 10 CpM and full points are credited, if there were mistakes in the
-callsign entered, the speed decreases by 10 CpM and (depending on how many
-letters were correct) only a fraction of the maximum points are credited.
+callsign with the one sent. If the callsign is copied correctly, the overall
+speed increases by the configured speed-up step and full points are credited.
+If there were mistakes, it decreases by the configured speed-down step and
+(depending on how many letters were correct) only a fraction of the maximum
+points are credited.
+
+When the overall speed falls below the configured character-speed floor, QRQ
+uses Farnsworth timing: individual dots and dashes remain at the character
+speed while the spacing between characters grows. The live score display shows
+both the overall and effective character speeds.
 
 A callsign can be heard again once by pressing F6, hitting F10 quits the
 attempt. The INS key toggles between insert and overwrite mode in the callsign

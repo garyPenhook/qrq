@@ -19,6 +19,12 @@ int main(void) {
 	char difference[32];
 	struct qrq_score_state session = state(100);
 
+	assert(qrq_score_accumulate(10, 20) == 30);
+	assert(qrq_score_accumulate(QRQ_SESSION_SCORE_MAX - 2, 5) ==
+			QRQ_SESSION_SCORE_MAX);
+	assert(qrq_score_accumulate(-1, 5) == 0);
+	assert(qrq_score_accumulate(5, -1) == 5);
+
 	assert(qrq_score_attempt(&session, "K1ABC", "K1ABC", 100, difference,
 			sizeof(difference)) == 1000);
 	assert(strcmp(difference, "-") == 0);
@@ -42,5 +48,11 @@ int main(void) {
 	session.attempt_valid = 0;
 	assert(qrq_score_attempt(&session, "A", "A", 100, difference,
 			sizeof(difference)) == 0);
+
+	session = state(QRQ_SPEED_MAX - 2);
+	session.speed_up_step = 5;
+	assert(qrq_score_attempt(&session, "A", "A", session.speed, difference,
+			sizeof(difference)) == 2 * (QRQ_SPEED_MAX - 2));
+	assert(session.speed == QRQ_SPEED_MAX);
 	return 0;
 }

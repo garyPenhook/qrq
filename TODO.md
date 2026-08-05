@@ -134,3 +134,136 @@ git diff --cached --stat
 git diff --cached -- src/qrq.c src/Makefile src/qrqrc ROADMAP.md TODO.md
 git log --oneline --decorate --graph --all --max-count=20
 ```
+
+## Full code and option review backlog (2026-08-05)
+
+Scope: all C sources and headers, Linux OSS/PulseAudio paths, static review of
+the Windows/Core Audio paths, the Makefile and CI workflow, bundled callbases,
+configuration parsing/persistence, F5 controls, scoring, summaries, toplist,
+and history. The existing core tests and manual ASan/UBSan runs pass; the items
+below are gaps those tests do not currently exercise.
+
+### High priority: correctness, safety, and data integrity
+
+- [x] Separate the cumulative mistake count from the error-display cursor.
+  The UI now wraps an independent display counter without changing session
+  errors, accuracy, history, or `accuracytarget` evaluation.
+- [x] Make adaptive selection effective. Missed items now remain in the
+  available pool with increased weight until they are copied correctly; the
+  result transition and saturation behavior have focused tests.
+- [x] Exclude aborted and incomplete comparable sessions from the toplist.
+  Eligibility now requires ordinary scoring, every requested call completed,
+  and the optional accuracy target; history records that policy independently
+  of whether the resulting numeric score is zero.
+- [x] Replace `read_config()` with a bounded key/value parser and unit tests.
+  In particular:
+  - do not delete the final value character when the last line lacks a newline;
+  - accept CRLF and trailing whitespace/comments consistently;
+  - replace `atoi()`/`atof()` and unchecked `ctype` calls with checked parsing;
+  - reject overflow and nonsensical speed, sample-rate, pitch, edge, and length
+    combinations before they reach timing or allocation arithmetic;
+  - validate related options after parsing the whole file so file order does
+    not change `minpitch`/`maxpitch`, length, or legacy speed-step behavior.
+- [x] Fix `sessionseed` persistence. A tested unsigned-value helper now accepts
+  saved trailing whitespace, CRLF, and optional comments while rejecting signs,
+  overflow, and trailing junk.
+- [x] Bound path construction and callbase discovery. `find_files()` and
+  `find_callbases()` now use checked construction and environment fallbacks;
+  the list is count-bounded and every probe file and directory is closed.
+- [x] Validate Morse timing arithmetic. User-controlled speed, `samplerate`,
+  `mincharspeed`, and rise time now have defined ranges; runtime shaping caps
+  the edge below the generated dot so silence lengths remain nonnegative.
+- [x] Prevent signed session-score overflow and define the supported score
+  range. Accumulation now saturates at the fixed-width toplist limit of 999999,
+  and the writer rejects any out-of-contract value explicitly.
+- [ ] Do not allow F5 to mutate audio globals while the worker is playing.
+  Opening settings during a call can change speed, pitch, waveform, volume,
+  noise, or edge concurrently and resets current speed to `initialspeed`.
+  Snapshot transmission parameters per worker or wait before editing them.
+- [ ] Repair Windows audio/thread error handling. Stray semicolons discard the
+  results of `waveOutOpen()` and `WaitForSingleObject()`; event, buffer, and
+  `_beginthreadex()` results are not consistently checked, and the worker entry
+  point should use the exact Windows calling convention/signature.
+- [ ] Harden Core Audio initialization and playback synchronization. Check
+  allocation and every AudioUnit status, clean up partial initialization, use
+  a predicate loop for the condition variable, and avoid unsafe/blocking work
+  in the render callback.
+- [ ] Handle partial/interrupted OSS writes instead of mapping `write_audio()`
+  to one unchecked `write()` call; propagate backend playback failures to the
+  UI consistently for OSS, PulseAudio, Core Audio, and Windows.
+
+### Medium priority: training and option behavior
+
+- [x] Make speed changes understandable in the UI. The live score line now
+  displays overall speed and effective character speed separately, and F5 calls
+  `mincharspeed` the character-speed floor so Farnsworth spacing is visible.
+- [x] Define deliberate review scheduling. `reviewmisses=1` now reserves every
+  third transmission for the oldest pending miss, guaranteeing intervening new
+  material and preventing a repeatedly missed item from starving unseen items.
+- [x] Correct word-space timing. A space is treated as an extra character gap,
+  It now adds four units after the preceding three-unit character gap, producing
+  the standard seven-unit gap in ordinary and Farnsworth timing.
+- [x] Validate callbase characters against symbols the player and input editor
+  both support. Unsupported rows, including the bundled `cwops.qcb` header, are
+  skipped instead of being transmitted as an unenterable question-mark pattern.
+- [~] Make callsign and path editing round-trip. Config loading now preserves
+  `/P`-style callsigns and paths containing spaces; the OSS device editor is
+  still limited to 14 input characters.
+- [ ] Separate deterministic practice randomness from QRN sample generation.
+  `tonegen()` consumes the same global `rand()` sequence as item and pitch
+  selection, so changing noise/audio generation changes a seeded session's
+  future training sequence.
+- [x] Exclude ineligible training sessions from comparable history summaries.
+  Fixed-speed, unlimited, review, adaptive, and seeded sessions remain recorded
+  but no longer depress average scores or distort score trends.
+- [ ] Use collision-resistant summary filenames. Two attempts by the same call
+  within one minute write the same `<call>-<minute>.txt` path, overwriting the
+  earlier summary; also check `fclose()` and Summary-directory creation errors.
+- [ ] Match toplist/history records by the fixed callsign field, not `strstr()`.
+  Current highlighting, “own scores,” and legacy statistics can match another
+  callsign that merely contains the user's call as a substring.
+- [ ] Make callbase counts use `size_t` end-to-end. `read_callbase()` narrows the
+  loaded count to `int` and then stores it in `unsigned long`, making its later
+  `INT_MAX` guard ineffective for very large databases.
+- [x] Close history files even after read errors and reject accumulation or
+  session-count overflow in very large or untrusted histories.
+
+### F5 screen and usability
+
+- [x] Fix the session-length layout (`or u50` in the old screen). The numeric or
+  `all` value is now rendered in the value column before the key hint.
+- [x] Show the `stoponerror` state and its existing `t` key alongside fixed
+  speed so the setting no longer changes invisibly.
+- [ ] Expose or clearly label config-only options: volume, QRN level, random
+  pitch range, call length/prefix/digit/portable/character filters, and session
+  seed. `samplerate` is a hidden read-only legacy option that is neither in the
+  sample config nor saved; either support/document it fully or remove it.
+- [x] Prevent integer overflow in repeated F5 key adjustments for initial
+  speed, minimum character speed, and speed steps, and show enforced limits.
+- [x] Make the callbase chooser bounded and cancellable, deduplicate results,
+  close directory handles, use exact case-insensitive `.qcb` suffix matching,
+  and avoid loading the selected database twice.
+- [ ] Check terminal dimensions and every `newwin()` result before drawing.
+  Resizing currently refreshes fixed 80x24 windows without relayout, while a
+  smaller terminal can yield null/failed window operations.
+
+### Build, test, and documentation follow-up
+
+- [ ] Add focused tests for config read/save round trips, CRLF/no-final-newline
+  files, every option boundary, speed-down plus Farnsworth timing, word gaps,
+  cumulative error counts past display wrap, abort eligibility, adaptive/review
+  scheduling, summary collisions, and malformed toplist/history files.
+- [x] Exercise unit tests under ASan/UBSan in CI. The sanitizer job currently
+  runs the focused suites as well as `qrq -h`, and Makefile test recipes honor
+  caller-provided sanitizer compiler flags.
+- [~] Extend the strict warning gate to PulseAudio and platform backends. The
+  OSS and PulseAudio sources now pass it. Add mocked/runtime-appropriate Windows
+  and Core Audio failure-path tests.
+- [x] Update CI's hard-coded version (`0.3.5`) to the Makefile version and add a
+  single-source version check.
+- [ ] Refresh README, INSTALL, and the 2013 man page to enumerate current
+  options and eligibility rules. README still states fixed +/-10 CpM behavior,
+  INSTALL says all values are available in-program, and the man page refers to
+  runtime resources through `DESTDIR` rather than `PREFIX`.
+- [x] Add a conventional `test` alias for the existing `check` target so the
+  documented/common `make test` workflow does not fail.

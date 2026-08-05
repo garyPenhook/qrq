@@ -1,5 +1,7 @@
 #include "history.h"
 
+#include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -48,6 +50,8 @@ int qrq_history_summarize(const char *path, const char *callsign,
 	int score;
 	int max_speed;
 	int eligible;
+	int close_failed;
+	int read_failed;
 	long long total_score = 0;
 	long long total_accuracy = 0;
 
@@ -67,8 +71,13 @@ int qrq_history_summarize(const char *path, const char *callsign,
 		if (sscanf(line, "%lld,%31[^,],%d,%d,%d,%d,%d", &timestamp,
 				recorded_call, &calls, &errors, &score, &max_speed, &eligible) != 7 ||
 				strcmp(recorded_call, callsign) != 0 || calls <= 0 || errors < 0 ||
-				errors > calls || score < 0 || max_speed < 0) {
+				errors > calls || score < 0 || max_speed < 0 || eligible != 1) {
 			continue;
+		}
+		if (total_score > LLONG_MAX - score || total_accuracy > LLONG_MAX - 100 ||
+				summary->sessions == SIZE_MAX) {
+			(void)fclose(file);
+			return -1;
 		}
 		if (summary->sessions == 0) {
 			summary->first_score = score;
@@ -80,7 +89,9 @@ int qrq_history_summarize(const char *path, const char *callsign,
 		total_accuracy += (long long)(calls - errors) * 100 / calls;
 		summary->sessions++;
 	}
-	if (ferror(file) || fclose(file) != 0) {
+	read_failed = ferror(file);
+	close_failed = fclose(file) != 0;
+	if (read_failed || close_failed) {
 		return -1;
 	}
 	if (summary->sessions != 0) {

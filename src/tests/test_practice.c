@@ -1,6 +1,7 @@
 #include "practice.h"
 
 #include <assert.h>
+#include <limits.h>
 
 int main(void) {
 	unsigned char used[] = {0, 0, 0};
@@ -19,6 +20,16 @@ int main(void) {
 	assert(qrq_practice_choose(3, used, mistakes, 1, 4) == 2);
 	used[1] = 1;
 	assert(qrq_practice_choose(3, used, mistakes, 1, 1) == 2);
+	assert(qrq_practice_record_result(3, used, mistakes, 1, 0, 1) == 0);
+	assert(used[1] == 0 && mistakes[1] == 3);
+	assert(qrq_practice_choose(3, used, mistakes, 1, 1) == 1);
+	assert(qrq_practice_record_result(3, used, mistakes, 1, 1, 1) == 0);
+	assert(used[1] == 1 && mistakes[1] == 3);
+	used[1] = 0;
+	mistakes[1] = UCHAR_MAX;
+	assert(qrq_practice_record_result(3, used, mistakes, 1, 0, 0) == 0);
+	assert(used[1] == 1 && mistakes[1] == UCHAR_MAX);
+	assert(qrq_practice_record_result(3, used, mistakes, 3, 0, 1) == -1);
 	used[0] = used[2] = 1;
 	assert(qrq_practice_choose(3, used, mistakes, 1, 0) == QRQ_PRACTICE_NO_ITEM);
 	assert(qrq_review_queue_take(&queue, &item) == 0);
@@ -33,5 +44,12 @@ int main(void) {
 	assert(qrq_practice_accuracy(10, 1) == 90);
 	assert(qrq_practice_accuracy(3, 1) == 66);
 	assert(qrq_practice_accuracy(3, 4) == 0);
+	assert(qrq_practice_session_eligible(1, 50, 50, 90, 0) == 1);
+	assert(qrq_practice_session_eligible(1, 49, 50, 98, 0) == 0);
+	assert(qrq_practice_session_eligible(0, 50, 50, 100, 0) == 0);
+	assert(qrq_practice_session_eligible(1, 50, 50, 89, 90) == 0);
+	assert(qrq_practice_session_eligible(1, 50, 50, 90, 90) == 1);
+	assert(qrq_practice_session_eligible(1, 0, 0, 100, 0) == 0);
+	assert(qrq_practice_session_eligible(1, 50, 50, 101, 0) == 0);
 	return 0;
 }

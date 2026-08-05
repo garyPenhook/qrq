@@ -47,6 +47,22 @@ size_t qrq_practice_choose(size_t count, const unsigned char *used,
 	return QRQ_PRACTICE_NO_ITEM;
 }
 
+int qrq_practice_record_result(size_t count, unsigned char *used,
+		unsigned char *mistakes, size_t item, int copied_correctly, int adaptive) {
+	if (used == NULL || mistakes == NULL || item >= count) {
+		return -1;
+	}
+	if (copied_correctly) {
+		used[item] = 1;
+		return 0;
+	}
+	if (mistakes[item] != UCHAR_MAX) {
+		mistakes[item]++;
+	}
+	used[item] = adaptive ? 0 : 1;
+	return 0;
+}
+
 int qrq_review_queue_push(struct qrq_review_queue *queue, size_t item) {
 	size_t *items;
 	size_t capacity;
@@ -95,4 +111,14 @@ int qrq_practice_accuracy(size_t attempts, size_t errors) {
 	}
 	return (int)(((long double)(attempts - errors) * 100.0L) /
 			(long double)attempts);
+}
+
+int qrq_practice_session_eligible(int attempt_valid, size_t completed,
+		size_t requested, int accuracy, int accuracy_target) {
+	if (!attempt_valid || requested == 0 || completed != requested ||
+			accuracy < 0 || accuracy > 100 || accuracy_target < 0 ||
+			accuracy_target > 100) {
+		return 0;
+	}
+	return accuracy_target == 0 || accuracy >= accuracy_target;
 }

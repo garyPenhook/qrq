@@ -1,15 +1,16 @@
 # Configuration file for qrq by DJ5CW. Change values as needed. 
-# NOTE: Don't leave any spaces between the = and the assigned value.
-# for example: dspdevice = /dev/dsp won't work!
+# Whitespace around '=' and trailing comments are accepted.
 # The settings can be changed and saved from within the
 # program, so there is usually no need to manually change anything here.
 
 callsign=MYCALL       # your callsign
 initialspeed=100      # initial speed in Letters per Minute / LpM (5 LpM = 1 WpM)
 mincharspeed=100      # minimum character speed. below, Farnsworth is used
+# supported speed range: 10..5000 CpM (character floor may also be 0)
 # legacy shared speed step; retained for compatibility with older qrq configs
 speedstep=10
 # independent speed change after a correct or incorrect copy (in LpM)
+# supported step range: 1..5000 CpM
 speedupstep=10
 speeddownstep=10
 # number of calls per session; 50 is the standard, comparable high-score mode
@@ -36,6 +37,8 @@ allowedchars=
 # nonzero value makes call and pitch selection repeatable; 0 remains random
 sessionseed=0
 dspdevice=/dev/dsp    # your DSP device, usually /dev/dsp (for OSS only)
+# audio sample rate in Hz (8000..384000)
+samplerate=44100
 
 # risetime and falltime for shaping the CW sigs (in milliseconds). recommended
 # values: 1..5 see http://fkurz.net/ham/dah.png for an illustration.

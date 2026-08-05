@@ -13,6 +13,17 @@ static int bounded_score(size_t length, int speed, int divisor) {
 	return (2 * (int)length * speed) / divisor;
 }
 
+int qrq_score_accumulate(int total, int points) {
+	if (total < 0 || points < 0) {
+		return total < 0 ? 0 : total;
+	}
+	if (total >= QRQ_SESSION_SCORE_MAX ||
+			points >= QRQ_SESSION_SCORE_MAX - total) {
+		return QRQ_SESSION_SCORE_MAX;
+	}
+	return total + points;
+}
+
 int qrq_score_attempt(struct qrq_score_state *state, const char *sent,
 		const char *input, int transmitted_speed, char *difference,
 		size_t difference_size) {
@@ -39,9 +50,12 @@ int qrq_score_attempt(struct qrq_score_state *state, const char *sent,
 		if (state->speed > state->maxspeed) {
 			state->maxspeed = state->speed;
 		}
-		if (!state->fixed_speed && state->speed_up_step > 0 &&
-				state->speed <= INT_MAX - state->speed_up_step) {
-			state->speed += state->speed_up_step;
+		if (!state->fixed_speed && state->speed_up_step > 0) {
+			if (state->speed <= QRQ_SPEED_MAX - state->speed_up_step) {
+				state->speed += state->speed_up_step;
+			} else {
+				state->speed = QRQ_SPEED_MAX;
+			}
 		}
 		if (state->attempt_valid) {
 			score = bounded_score(sent_length, transmitted_speed, 1);

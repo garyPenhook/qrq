@@ -38,6 +38,7 @@ static int buffer_failed = 0;
 
 void *open_dsp (char *dummy) {
 	static int opened = 0;
+	(void)dummy;
 
 	/* with PA we only open the device once and then leave it
 	   opened */
@@ -132,4 +133,3 @@ void close_audio (void *s) {
 	}
 	bufpos = 0;
 }
-

@@ -65,6 +65,15 @@ int main(void) {
 	filter.maximum_length = QRQ_CALLBASE_MAX_LENGTH;
 	assert(qrq_callbase_load(path, &filter, &callbase) == -1);
 	assert(errno == EOVERFLOW);
+
+	file = fopen(path, "w");
+	assert(file != NULL);
+	fputs("!!Order!! Call Name\nK1ABC\n", file);
+	assert(fclose(file) == 0);
+	filter.portable_mode = 0;
+	assert(qrq_callbase_load(path, &filter, &callbase) == 0);
+	assert(callbase.count == 1 && strcmp(callbase.items[0], "K1ABC") == 0);
+	qrq_callbase_free(&callbase);
 	remove(path);
 	return 0;
 }

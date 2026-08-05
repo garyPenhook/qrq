@@ -81,6 +81,18 @@ static void uppercase_line(char *line, size_t length) {
 	}
 }
 
+static int has_supported_characters(const char *line, size_t length) {
+	static const char supported[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/+.,= ?";
+	size_t i;
+
+	for (i = 0; i < length; i++) {
+		if (strchr(supported, line[i]) == NULL) {
+			return 0;
+		}
+	}
+	return 1;
+}
+
 void qrq_callbase_free(struct qrq_callbase *callbase) {
 	size_t i;
 	if (callbase == NULL) {
@@ -131,7 +143,8 @@ int qrq_callbase_load(const char *path, const struct qrq_callbase_filter *filter
 			goto cleanup;
 		}
 		uppercase_line(line, line_length);
-		if (matches_filter(line, line_length, filter)) {
+		if (has_supported_characters(line, line_length) &&
+				matches_filter(line, line_length, filter)) {
 			selected++;
 			if (line_length > max_length) {
 				max_length = line_length;
@@ -162,7 +175,8 @@ int qrq_callbase_load(const char *path, const struct qrq_callbase_filter *filter
 			goto cleanup;
 		}
 		uppercase_line(line, line_length);
-		if (!matches_filter(line, line_length, filter)) {
+		if (!has_supported_characters(line, line_length) ||
+				!matches_filter(line, line_length, filter)) {
 			continue;
 		}
 		callbase->items[index] = malloc(line_length + 1);
