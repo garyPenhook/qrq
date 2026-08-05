@@ -2719,6 +2719,29 @@ static int find_files (void) {
 
 
 static int statistics (void) {
+		struct qrq_history_summary summary;
+
+		if (qrq_history_summarize(historyfilename, mycall, &summary) == 0 &&
+				summary.sessions != 0) {
+			werase(mid_w);
+			box(mid_w, 0, 0);
+			wattron(mid_w, A_BOLD);
+			mvwprintw(mid_w, 1, 2, "Session history for %s", mycall);
+			wattroff(mid_w, A_BOLD);
+			mvwprintw(mid_w, 3, 2, "Sessions:          %zu", summary.sessions);
+			mvwprintw(mid_w, 4, 2, "Average score:     %d", summary.average_score);
+			mvwprintw(mid_w, 5, 2, "Average accuracy:  %d%%", summary.average_accuracy);
+			mvwprintw(mid_w, 6, 2, "Best score/speed:  %d / %d CpM",
+					summary.best_score, summary.best_speed);
+			mvwprintw(mid_w, 7, 2, "Score trend:       %d -> %d",
+					summary.first_score, summary.last_score);
+			mvwaddstr(mid_w, 10, 2, "Press any key to return.");
+			wrefresh(mid_w);
+			getch();
+			touchwin(mid_w);
+			return 0;
+		}
+
 		char line[80]="";
 
 		int time = 0;

@@ -119,7 +119,9 @@ The OSS and PulseAudio backends both build locally.
    defaults to `/usr`; `DESTDIR` can now stage a package tree safely.
 11. [~] Record versioned local session history in `<toplist>.history.csv`;
     per-item response timing and analytics remain.
-12. Future product features—advanced
+12. [x] Show score, speed, and accuracy history in-program with F7; gnuplot
+    remains a fallback when no local history exists.
+13. Future product features—advanced
    audio, and terminal UX—are tracked in `ROADMAP.md` and need a product-level
    design decision before implementation.
 9. [x] Add a warning-free strict C17 syntax gate with `-Werror`.
