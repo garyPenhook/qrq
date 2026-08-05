@@ -32,6 +32,7 @@ typedef int AUDIO_HANDLE;
 #include <ctype.h>
 #include <time.h> 
 #include <limits.h> 			/* PATH_MAX */
+#include <stdint.h>
 
 #ifndef PATH_MAX				/* Not defined e.g. on GNU/hurd */
 #define PATH_MAX 4096 
@@ -88,6 +89,7 @@ typedef void *AUDIO_HANDLE;
 
 /* callsign array will be dynamically allocated */
 static char **calls = NULL;
+static size_t calls_allocated = 0;
 
 const static char *codetable[] = {
 ".-", "-...", "-.-.", "-..", ".", "..-.", "--.", "....", "..",".---",
@@ -134,8 +136,9 @@ static double edge=2.0;						/* rise/fall time in milliseconds */
 static int ed;							/* risetime, normalized to samplerate */
 
 static short buffer[88200];
-static int full_buf[882000];  /* 20 second max buffer */
-static int full_bufpos = 0;
+static int *full_buf = NULL;
+static size_t full_buf_capacity = 0;
+static size_t full_bufpos = 0;
 
 AUDIO_HANDLE dsp_fd;
 
@@ -149,7 +152,7 @@ static int read_config();
 static int save_config();
 static int tonegen(int freq, int length, int waveform);
 static void *morse(void * arg); 
-static int add_to_buf(void* data, int size);
+static int add_to_buf(const void *data, size_t size);
 static int readline(WINDOW *win, int y, int x, char *line, int capitals, int len); 
 static void thread_fail (int j);
 static int check_toplist ();
@@ -166,6 +169,7 @@ static void update_parameter_dialog();
 static void start_summary_file();
 static void close_summary_file();
 static int validchar(int c);
+static void free_calls(void);
 
 
 #ifdef WIN_THREADS
@@ -1536,12 +1540,21 @@ static void *morse(void *arg) {
 	/* opening the DSP device */
 	dsp_fd = open_dsp(dspdevice);
 #endif
+
+#ifdef PA
+	if (dsp_fd == NULL) {
+		sending_complete = 1;
+		return NULL;
+	}
+#endif
 	/* set bufpos to 0 */
 
 	full_bufpos = 0; 
 
 	/* Some silence; otherwise the call starts right after pressing enter */
-	tonegen(0, samplerate/4, SILENCE);
+	if (tonegen(0, samplerate/4, SILENCE) != 0) {
+		goto audio_error;
+	}
 
 	/* Farnsworth? */
 	if (speed < mincharspeed) {
@@ -1606,33 +1619,45 @@ static void *morse(void *arg) {
 		for (j = 0; j < strlen(code) ; j++) {
 			c = code[j];
 			if (c == '.') {
-				tonegen(freq, dotlen + ed, waveform);
-				tonegen(0, fulldotlen - ed, SILENCE);
+				if (tonegen(freq, dotlen + ed, waveform) != 0 ||
+					tonegen(0, fulldotlen - ed, SILENCE) != 0) {
+					goto audio_error;
+				}
 			}
 			else if (c == '-') {
-				tonegen(freq, dashlen + ed, waveform);
-				tonegen(0, fulldotlen - ed, SILENCE);
+				if (tonegen(freq, dashlen + ed, waveform) != 0 ||
+					tonegen(0, fulldotlen - ed, SILENCE) != 0) {
+					goto audio_error;
+				}
 			}
-            else {  /* space */
-				tonegen(0, dotlen, SILENCE);
-            }
+	            else {  /* space */
+				if (tonegen(0, dotlen, SILENCE) != 0) {
+					goto audio_error;
+				}
+	            }
 		}
 		if (farnsworth) {
-			tonegen(0, 3*fwdotlen - fulldotlen, SILENCE);
+			if (tonegen(0, 3*fwdotlen - fulldotlen, SILENCE) != 0) {
+				goto audio_error;
+			}
 		}
 		else {
-			tonegen(0, 2*fulldotlen, SILENCE);
+			if (tonegen(0, 2*fulldotlen, SILENCE) != 0) {
+				goto audio_error;
+			}
 		}
 	}
 
 
 #if !defined(PA) && !defined(CA)
-	add_to_buf(buffer, 88200);
+	if (add_to_buf(buffer, sizeof(buffer)) != 0) {
+		goto audio_error;
+	}
 #endif
 
 #if WIN32
-	wh.lpData = (char*) &full_buf[0];
-	wh.dwBufferLength = full_bufpos - 2;
+	wh.lpData = (char*) full_buf;
+	wh.dwBufferLength = (DWORD) (full_bufpos - 2);
 	wh.dwFlags = 0;
 	wh.dwLoops = 0;
 	waveOutPrepareHeader(h, &wh, sizeof(wh));
@@ -1643,19 +1668,54 @@ static void *morse(void *arg) {
 	waveOutClose(h);
 	CloseHandle(d);
 #else
-	write_audio(dsp_fd, &full_buf[0], full_bufpos);
+	write_audio(dsp_fd, full_buf, (int) full_bufpos);
 	close_audio(dsp_fd);
+#endif
+	sending_complete = 1;
+	return NULL;
+
+audio_error:
+#ifdef OSS
+	(void) close_audio(dsp_fd);
 #endif
 	sending_complete = 1;
 	return NULL;
 }
 
-static int add_to_buf(void* data, int size)
+static int add_to_buf(const void *data, size_t size)
 {
-	memcpy(&full_buf[full_bufpos / sizeof(int)], data, size);
-	full_bufpos += size;
+	int *new_buf;
+	size_t required;
+	size_t new_capacity;
+
+	if (data == NULL || size > (size_t) INT_MAX ||
+		full_bufpos > (size_t) INT_MAX - size) {
+		return -1;
+	}
+
+	required = full_bufpos + size;
+	if (required > full_buf_capacity) {
+		new_capacity = full_buf_capacity ? full_buf_capacity : 65536;
+		while (new_capacity < required) {
+			if (new_capacity > (size_t) INT_MAX / 2) {
+				new_capacity = required;
+				break;
+			}
+			new_capacity *= 2;
+		}
+
+		new_buf = realloc(full_buf, new_capacity);
+		if (new_buf == NULL) {
+			return -1;
+		}
+		full_buf = new_buf;
+		full_buf_capacity = new_capacity;
+	}
+
+	memcpy((unsigned char *) full_buf + full_bufpos, data, size);
+	full_bufpos = required;
 	return 0;
-}	
+}
 
 /* tonegen generates a sinus tone of frequency 'freq' and length 'len' (samples)
  * based on 'samplerate', 'edge' (rise/falltime) */
@@ -1663,6 +1723,9 @@ static int add_to_buf(void* data, int size)
 static int tonegen (int freq, int len, int waveform) {
 	int x=0;
 	int out;
+#ifndef PA
+	uint32_t stereo_out;
+#endif
 	double val=0;
 
 	for (x=0; x < len-1; x++) {
@@ -1689,9 +1752,15 @@ static int tonegen (int freq, int len, int waveform) {
 		
 		out = (int) (val * 32500.0);
 #ifndef PA
-		out = out + (out<<16);	/* stereo only for OSS & CoreAudio*/
+		stereo_out = ((uint32_t) (uint16_t) out << 16) | (uint16_t) out;
+		if (add_to_buf(&stereo_out, sizeof(stereo_out)) != 0) {
+			return -1;
+		}
+#else
+		if (add_to_buf(&out, sizeof(out)) != 0) {
+			return -1;
+		}
 #endif
-		add_to_buf(&out, sizeof(out));
 	}
 	return 0;
 }
@@ -2105,6 +2174,17 @@ static int statistics () {
 }
 
 
+static void free_calls(void) {
+	size_t i;
+
+	for (i = 0; i < calls_allocated; i++) {
+		free(calls[i]);
+	}
+	free(calls);
+	calls = NULL;
+	calls_allocated = 0;
+}
+
 int read_callbase () {
 	FILE *fh;
 	int c,i;
@@ -2143,19 +2223,14 @@ int read_callbase () {
 		exit(EXIT_FAILURE);
 	}
 
-	/* allocate memory for calls array, free if needed */
-    if (calls) {
-        for (i = 0; i < nrofcalls; i++) {
-            free(calls[i]);
-            calls[i] = NULL;
-        }
-        free(calls);
-        calls = NULL;
-    }
-
-	if ((calls = (char **) malloc( (size_t) sizeof(char *)*nr )) == NULL) {
+	/* Allocate a zero-initialized table so cleanup is safe after a partial
+	 * allocation failure. */
+	free_calls();
+	calls = calloc((size_t) nr, sizeof(*calls));
+	calls_allocated = (size_t) nr;
+	if (calls == NULL) {
 		fprintf(stderr, "Error: Couldn't allocate %d bytes!\n", 
-						(int) sizeof(char)*nr);
+						(int) sizeof(*calls)*nr);
 		exit(EXIT_FAILURE);
 	}
 	
@@ -2163,6 +2238,7 @@ int read_callbase () {
 	for (c=0; c < nr; c++) {
 		if ((calls[c] = (char *) malloc ((call_maxlen + 2) * sizeof(char))) == NULL) {
 			fprintf(stderr, "Error: Couldn't allocate %d bytes!\n", call_maxlen + 2);
+			free_calls();
 			exit(EXIT_FAILURE);
 		}
 	}

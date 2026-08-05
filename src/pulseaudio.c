@@ -21,6 +21,8 @@ PulseAudio specific functions and includes.
 */
 
 #include <ncurses.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
 #include <pulse/simple.h>
@@ -30,8 +32,9 @@ extern long samplerate;
 extern void  *dsp_fd;
 
 short int *buf = 0;
-int bufsize = 0;
-int bufpos = 0;
+size_t bufsize = 0;
+size_t bufpos = 0;
+static int buffer_failed = 0;
 
 void *open_dsp (char *dummy) {
 	static int opened = 0;
@@ -58,6 +61,10 @@ void *open_dsp (char *dummy) {
 				pa_strerror(error));
 	}
 
+	if (s == NULL) {
+		return NULL;
+	}
+
 	opened = 1;
 	return s;
 }
@@ -65,23 +72,64 @@ void *open_dsp (char *dummy) {
 /* actually just puts samples into the buffer that is played at the end 
 (close_audio) */
 void write_audio (void *bla, int *in, int size) {
-	int sample_count = size/sizeof(int);
-	int i = 0;
-	if(bufsize <= bufpos + sample_count) {
-		buf = realloc(buf, (bufpos + sample_count) * sizeof(short int));
-		bufsize = bufpos + sample_count;
+	short int *new_buf;
+	size_t sample_count;
+	size_t required;
+	size_t new_size;
+	size_t i;
+
+	(void) bla;
+	if (in == NULL || size < 0 || buffer_failed) {
+		buffer_failed = 1;
+		return;
+	}
+
+	sample_count = (size_t) size / sizeof(*in);
+	if (sample_count > SIZE_MAX - bufpos) {
+		buffer_failed = 1;
+		return;
+	}
+	required = bufpos + sample_count;
+	if (required > bufsize) {
+		new_size = bufsize ? bufsize : 16384;
+		while (new_size < required) {
+			if (new_size > SIZE_MAX / 2) {
+				new_size = required;
+				break;
+			}
+			new_size *= 2;
+		}
+		if (new_size > SIZE_MAX / sizeof(*buf)) {
+			buffer_failed = 1;
+			return;
+		}
+		new_buf = realloc(buf, new_size * sizeof(*buf));
+		if (new_buf == NULL) {
+			buffer_failed = 1;
+			return;
+		}
+		buf = new_buf;
+		bufsize = new_size;
 	}
 	for (i=0; i < sample_count; i++) {
-		buf[bufpos] = (short int) in[i];
-		bufpos++;
+		buf[bufpos + i] = (short int) in[i];
 	}	
+	bufpos = required;
 }
 
 void close_audio (void *s) {
 	int e;
-	pa_simple_write(s, buf, bufpos*sizeof(short int), &e);
-	pa_simple_drain(s, &e);
+	if (s == NULL || buffer_failed) {
+		bufpos = 0;
+		buffer_failed = 0;
+		return;
+	}
+	if (bufpos != 0 && pa_simple_write(s, buf, bufpos * sizeof(*buf), &e) < 0) {
+		fprintf(stderr, "pa_simple_write() failed: %s\n", pa_strerror(e));
+	}
+	else if (pa_simple_drain(s, &e) < 0) {
+		fprintf(stderr, "pa_simple_drain() failed: %s\n", pa_strerror(e));
+	}
 	bufpos = 0;
 }
-
 

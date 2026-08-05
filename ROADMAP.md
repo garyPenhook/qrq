@@ -15,7 +15,7 @@ practice.
 
 ## Phase 1: Correctness and safety
 
-- Replace fixed-size audio generation buffers with a capacity-checked buffer.
+- [x] Replace fixed-size audio generation buffers with a capacity-checked buffer.
 - Remove the audio-completion data race and define thread ownership clearly.
 - Check allocation, audio, file, and thread errors consistently.
 - Replace shell-based file copies and predictable temporary files.

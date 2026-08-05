@@ -9,10 +9,10 @@ This file is the operational handoff for continuing work on
 - Current branch: `modernize/upstream-sync`
 - Original fork commit: `4e673e4c70d52d207a23e5ef2240e54bb6aa82d2`
 - Imported upstream commit: `6174eeebec97cf56a041663cd1558beddee75b36`
+- Local baseline commit: `c590cd2845cd255884af2868d1653037c6a6c963`
 - `origin`: `https://github.com/garyPenhook/qrq.git`
 - `upstream`: `https://git.fkurz.net/dj1yfk/qrq.git`
-- Nothing has been committed or pushed by Codex yet.
-- The upstream import and fixes are currently staged in the index.
+- No local commits have been pushed.
 - The original `master` branch remains at the untouched QRQ 0.3.1 commit.
 
 Important: do not discard or overwrite the staged tree. Upstream and the
@@ -61,24 +61,26 @@ PulseAudio has not been built locally because `pulse/simple.h` and the
 
 ## Immediate next tasks
 
-1. Review the staged import, then create a local baseline commit before larger
-   refactors. Do not push until the user requests publication.
-2. Replace `full_buf[882000]` in `src/qrq.c` with a capacity-checked dynamic
-   sample buffer. Propagate allocation failures through `tonegen()` and
-   `morse()` instead of silently continuing.
-3. Harden `src/pulseaudio.c`:
+1. [x] Create a local baseline commit before larger refactors. Do not push
+   until the user requests publication.
+2. [x] Replace `full_buf[882000]` in `src/qrq.c` with a capacity-checked
+   dynamic sample buffer. Allocation failure now stops the transmission.
+3. [x] Harden `src/pulseaudio.c`:
    - use a temporary pointer for `realloc`;
    - reject integer-size overflow;
    - do not mark the backend opened when `pa_simple_new()` fails;
    - check `pa_simple_write()` and `pa_simple_drain()` results.
-4. Remove the `sending_complete` data race. Prefer a small audio/session state
+   This code remains unbuilt locally because PulseAudio development headers are
+   not installed.
+4. [ ] Remove the `sending_complete` data race. Prefer a small audio/session state
    abstraction using a mutex/condition variable or a proven cross-platform
    synchronization layer; `volatile` is not a valid fix.
-5. Fix callbase ownership. `read_callbase()` must free every allocated string
-   before replacing the pointer array, including partial-allocation failures.
-6. Replace shell-based copies and fixed `/tmp/qrq-*` paths with direct file I/O
+5. [x] Fix callbase ownership. `read_callbase()` now tracks allocated rows,
+   frees every string on reload, and safely cleans up after a partial
+   allocation failure.
+6. [ ] Replace shell-based copies and fixed `/tmp/qrq-*` paths with direct file I/O
    and securely created temporary files.
-7. Repair config and toplist allocation/error handling. `cppcheck` currently
+7. [ ] Repair config and toplist allocation/error handling. `cppcheck` currently
    identifies unchecked `malloc`, unsafe direct `realloc` assignment, and
    unchecked `fopen` results.
 
