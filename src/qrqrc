@@ -64,6 +64,9 @@ volume=100
 minpitch=500
 maxpitch=900
 
+# QRN-like background noise as a percentage (0..100)
+qrnlevel=0
+
 # allow unlimited usage of F6
 # values: 0 = no, 1 = yes
 f6=0   

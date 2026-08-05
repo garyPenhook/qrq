@@ -144,6 +144,7 @@ static int j=0;							/* counter etc. */
 static int constanttone=0;              /* if 1 don't change the pitch */
 static int ctonefreq=800;               /* if constanttone=1 use this freq */
 static int volume=100;                  /* output gain as a percentage */
+static int qrnlevel=0;                  /* background noise as a percentage */
 static int minpitch=500;
 static int maxpitch=900;
 static int f6=0;						/* f6 = 1: allow unlimited repeats */
@@ -1815,6 +1816,10 @@ static int read_config (void) {
 				printw("  line  %2d: volume: %d%%\n", line, volume);
 			}
 		}
+		else if (tmp == strstr(tmp, "qrnlevel=")) {
+			k = atoi(tmp + 9);
+			if (k >= 0 && k <= 100) qrnlevel = k;
+		}
 		else if (tmp == strstr(tmp, "minpitch=")) {
 			k = atoi(tmp + 9);
 			if (k >= 100 && k <= maxpitch) minpitch = k;
@@ -2220,7 +2225,13 @@ static int tonegen (int freq, int len, int waveform) {
 				val *= pow(sin(2*PI*(x-(len-ed)+ed)/(4*ed)),2); 
 		}
 		
+		if (qrnlevel != 0) {
+			val += (((double)rand() / (double)RAND_MAX) * 2.0 - 1.0) *
+					(qrnlevel / 100.0);
+		}
 		out = (int) (val * 32500.0 * volume / 100.0);
+		if (out > 32500) out = 32500;
+		if (out < -32500) out = -32500;
 #ifndef PA
 		stereo_out = ((uint32_t) (uint16_t) out << 16) | (uint16_t) out;
 		if (add_to_buf(&stereo_out, sizeof(stereo_out)) != 0) {
@@ -2249,7 +2260,7 @@ static int save_config (void) {
 		"speedupstep", "speeddownstep", "sessionlength", "mincalllength",
 		"maxcalllength", "stoponerror", "adaptiveselection", "reviewmisses",
 		"accuracytarget", "callprefixes", "digitmode", "portablemode",
-		"allowedchars", "sessionseed", "volume", "minpitch", "maxpitch"
+		"allowedchars", "sessionseed", "volume", "minpitch", "maxpitch", "qrnlevel"
 	};
 	FILE *fh = NULL;
 	char tmp[PATH_MAX + 80];
@@ -2334,7 +2345,8 @@ static int save_config (void) {
 			case 26: written = snprintf(tmp, sizeof(tmp), "%s=%u ", confopts[i], sessionseed); break;
 			case 27: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], volume); break;
 			case 28: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], minpitch); break;
-			default: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], maxpitch); break;
+			case 29: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], maxpitch); break;
+			default: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], qrnlevel); break;
 		}
 		if (written < 0 || (size_t)written >= sizeof(tmp)) {
 			fprintf(stderr, "Unable to format config option '%s'.\n", confopts[i]);
