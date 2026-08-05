@@ -89,8 +89,6 @@ PulseAudio has not been built locally because `pulse/simple.h` and the
 
 ## Known compiler/static-analysis debt
 
-- Many no-argument functions use old `func()` declarations instead of
-  `func(void)`.
 - Several signed/unsigned comparisons involve `strlen()` and call counts.
 - Dynamically constructed format strings prevent compiler format checking.
 - The staged upstream files contain substantial pre-existing whitespace/CRLF

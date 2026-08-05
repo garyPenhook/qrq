@@ -150,32 +150,32 @@ static size_t full_bufpos = 0;
 
 AUDIO_HANDLE dsp_fd;
 
-static int display_toplist();
+static int display_toplist(void);
 static int calc_score (char * realcall, char * input, int speed, char * output, int f6pressed);
-static int update_score();
+static int update_score(void);
 static int show_error (char * realcall, char * wrongcall); 
-static int clear_display();
+static int clear_display(void);
 static int add_to_toplist(char * mycall, int score, int maxspeed);
-static int read_config();
-static int save_config();
+static int read_config(void);
+static int save_config(void);
 static int tonegen(int freq, int length, int waveform);
 static void *morse(void * arg); 
 static int add_to_buf(const void *data, size_t size);
 static int readline(WINDOW *win, int y, int x, char *line, int capitals, int len); 
 static void thread_fail (int j);
-static int check_toplist ();
-static int find_files ();
-static int statistics ();
-static int read_callbase ();
-static void find_callbases();
-static void select_callbase ();
-static void help ();
-static void callbase_dialog();
-static void parameter_dialog();
-static int clear_parameter_display();
-static void update_parameter_dialog();
-static void start_summary_file();
-static void close_summary_file();
+static int check_toplist (void);
+static int find_files (void);
+static int statistics (void);
+static int read_callbase (void);
+static void find_callbases(void);
+static void select_callbase (void);
+static void help (void);
+static void callbase_dialog(void);
+static void parameter_dialog(void);
+static int clear_parameter_display(void);
+static void update_parameter_dialog(void);
+static void start_summary_file(void);
+static void close_summary_file(void);
 static int append_summary(const char *format, ...);
 static int validchar(int c);
 static void free_calls(void);
@@ -652,7 +652,7 @@ while (status == 1) {
 
 /* (formerly status == 2). Change parameters */
 
-void parameter_dialog () {
+void parameter_dialog (void) {
 
 int j = 0;
 
@@ -833,7 +833,7 @@ while ((j = getch()) != 0) {
  * repaints the whole config/parameter screen (F5) */
 
 
-void update_parameter_dialog () {
+void update_parameter_dialog (void) {
 
 	clear_parameter_display();
 	switch (waveform) {
@@ -901,7 +901,7 @@ void update_parameter_dialog () {
 
 
 
-void callbase_dialog () {
+void callbase_dialog (void) {
 
 	clear_parameter_display();
 
@@ -1079,7 +1079,7 @@ static int readline(WINDOW *win, int y, int x, char *line, int capitals, int len
 }
 
 /* Read toplist and diplay first 10 entries */
-static int display_toplist () {
+static int display_toplist (void) {
 	FILE * fh;
 	int i = 0;
 	int first = 1;
@@ -1223,7 +1223,7 @@ static int append_summary(const char *format, ...) {
 	return 0;
 }
 
-static void start_summary_file () {
+static void start_summary_file (void) {
 	int row_format_len;
 	int header_format_len;
 
@@ -1261,7 +1261,7 @@ static void start_summary_file () {
 	}
 }
 
-static void close_summary_file () {
+static void close_summary_file (void) {
     FILE *fh;
     time_t t;
     struct tm *tmp;
@@ -1327,7 +1327,7 @@ static void close_summary_file () {
 }
 
 /* print score, current speed and max speed to window */
-static int update_score() {
+static int update_score(void) {
 	mvwaddstr(top_w,1,20, "Score:                         ");
 	mvwaddstr(top_w,2,20, "Speed:     CpM/    WpM, Max:    /  ");
 	if (attemptvalid) {
@@ -1382,7 +1382,7 @@ static int show_error (char * realcall, char * wrongcall) {
 }
 
 /* clear error display */
-static int clear_display() {
+static int clear_display(void) {
 	int i;
 	for (i=1;i<16;i++) {
 		mvwprintw(mid_w,i,1,"                                 "
@@ -1392,7 +1392,7 @@ static int clear_display() {
 }
 
 /* clear parameter display */
-static int clear_parameter_display() {
+static int clear_parameter_display(void) {
 	int i;
 	for (i=1;i<16;i++) {
 		mvwprintw(conf_w,i,1,"                                 "
@@ -1529,7 +1529,7 @@ cleanup:
  *
  * */
 
-static int read_config () {
+static int read_config (void) {
 	FILE *fh;
 	char tmp[80]="";
 	int i=0;
@@ -2023,7 +2023,7 @@ static int tonegen (int freq, int len, int waveform) {
  * config options that were not used yet in the file to the end 
  * */
 
-static int save_config () {
+static int save_config (void) {
 	static const char *const confopts[] = {
 		"callsign", "callbase", "dspdevice", "initialspeed",
 		"mincharspeed", "waveform", "constanttone", "ctonefreq",
@@ -2191,7 +2191,7 @@ static void thread_fail (int j) {
 }
 
 /* Add timestamps to toplist file if not there yet */
-static int check_toplist () {
+static int check_toplist (void) {
 	char first_line[35] = "";
 	char *old_data = NULL;
 	char *converted = NULL;
@@ -2388,7 +2388,7 @@ cleanup:
  * 3) in DESTDIR/share/qrq/ -> create ~/.qrq/ and copy qrqrc and toplist
  *    there.
  * 4) Nowhere --> Exit.*/
-static int find_files () {
+static int find_files (void) {
 	
 	FILE *fh;
 	const char *homedir = NULL;
@@ -2509,7 +2509,7 @@ static int find_files () {
 }
 
 
-static int statistics () {
+static int statistics (void) {
 		char line[80]="";
 
 		int time = 0;
@@ -2621,7 +2621,7 @@ static void free_calls(void) {
 	calls_allocated = 0;
 }
 
-int read_callbase () {
+int read_callbase (void) {
 	FILE *fh;
 	int c,i;
 	char tmp[CALL_MAX + 2] = "";
@@ -2702,7 +2702,7 @@ int read_callbase () {
 
 }
 
-void find_callbases () {
+void find_callbases (void) {
 	DIR *dir;
 	struct dirent *dp;
 	char tmp[PATH_MAX];
@@ -2749,7 +2749,7 @@ void find_callbases () {
 
 
 
-void select_callbase () {
+void select_callbase (void) {
 	int i = 0, j = 0, k = 0;
 	int c = 0;		/* cursor position   */
 	int p = 0;		/* page a 10 entries */
@@ -2827,7 +2827,7 @@ int validchar (int c) {
     return ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0'  && c <= '9') || c == '/' || c == ' ' || c == '-' || c == '.' || c == ',' || c == '=' || c == '?');
 }
 
-void help () {
+void help (void) {
 		printf("qrq v%s  (c) 2006-2025 Fabian Kurz, DJ5CW. "
 					"http://fkurz.net/ham/qrq.html\n", VERSION);
 		printf("High speed morse telegraphy trainer, similar to"
