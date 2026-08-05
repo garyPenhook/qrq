@@ -56,8 +56,7 @@ cc -std=c17 -D_POSIX_C_SOURCE=200809L -DOSS \
   -fsyntax-only src/qrq.c src/oss.c
 ```
 
-PulseAudio has not been built locally because `pulse/simple.h` and the
-`libpulse-simple` pkg-config package are not installed.
+The OSS and PulseAudio backends both build locally.
 
 ## Immediate next tasks
 
@@ -70,8 +69,7 @@ PulseAudio has not been built locally because `pulse/simple.h` and the
    - reject integer-size overflow;
    - do not mark the backend opened when `pa_simple_new()` fails;
    - check `pa_simple_write()` and `pa_simple_drain()` results.
-   This code remains unbuilt locally because PulseAudio development headers are
-   not installed.
+   Verified locally with PulseAudio 17.0 development headers.
 4. [x] Remove the `sending_complete` data race. POSIX builds use a mutex and
    Windows builds use Interlocked operations; repeat playback also resets the
    state before starting its worker.
