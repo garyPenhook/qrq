@@ -32,6 +32,19 @@ else
 endif
 
 INSTALL ?= install
+PKG_CONFIG ?= pkg-config
+
+NCURSES_CFLAGS := $(shell $(PKG_CONFIG) --cflags ncurses 2>/dev/null)
+NCURSES_LIBS := $(shell $(PKG_CONFIG) --libs ncurses 2>/dev/null)
+PULSE_CFLAGS := $(shell $(PKG_CONFIG) --cflags libpulse-simple 2>/dev/null)
+PULSE_LIBS := $(shell $(PKG_CONFIG) --libs libpulse-simple 2>/dev/null)
+
+ifeq ($(strip $(NCURSES_LIBS)),)
+	NCURSES_LIBS = -lncurses
+endif
+ifeq ($(strip $(PULSE_LIBS)),)
+	PULSE_LIBS = -lpulse-simple -lpulse
+endif
 
 # build information may be added by CI scripts and will be
 # displayed in the help text (qrq -h)
@@ -46,7 +59,7 @@ ifeq ($(USE_CA), YES)
 		OBJECTS=qrq.o score.o callbase.o coreaudio.o
 		override CFLAGS += -D CA -std=c99 -pthread
 		ifeq ($(OSX_PLATFORM), YES)
-			override LDFLAGS += -framework AudioUnit -framework CoreServices  -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=10.5 -lcurses
+		override LDFLAGS += -framework AudioUnit -framework CoreServices  -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=10.5 -lcurses
 			override CFLAGS += -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=10.5
 			ifeq ($(OSX_BUNDLE), YES)
 				CFLAGS:=$(CFLAGS) -D OSX_BUNDLE
@@ -60,8 +73,8 @@ ifeq ($(USE_CA), YES)
 			SSH=ssh -p2222
 		endif
 else ifeq ($(USE_PA), YES)
-		override CFLAGS += -D PA -pthread
-		override LDFLAGS += -lpthread -lpulse-simple -lpulse -lncurses
+		override CFLAGS += -D PA -pthread $(NCURSES_CFLAGS) $(PULSE_CFLAGS)
+		override LDFLAGS += -lpthread $(PULSE_LIBS) $(NCURSES_LIBS)
 		OBJECTS=qrq.o score.o callbase.o pulseaudio.o
 else ifeq ($(USE_WIN32), YES)
 		override CFLAGS += -D WIN32 -Iinclude -Iinclude/ncursesw -DNCURSES_STATIC
@@ -69,8 +82,8 @@ else ifeq ($(USE_WIN32), YES)
 		OBJECTS=qrq.o score.o callbase.o qrq.res lib/libncursesw.a
 else
 		OBJECTS=qrq.o score.o callbase.o oss.o
-		override LDFLAGS += -lpthread -lncurses
-		override CFLAGS += -D OSS
+		override LDFLAGS += -lpthread $(NCURSES_LIBS)
+		override CFLAGS += -D OSS $(NCURSES_CFLAGS)
 endif
 
 all: qrq

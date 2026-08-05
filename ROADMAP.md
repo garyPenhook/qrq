@@ -28,7 +28,8 @@ practice.
 - [x] Add GCC and Clang builds plus focused cppcheck analysis in GitHub Actions.
 - [x] Add ASan/UBSan build and command-line smoke-test coverage.
 - [x] Add a warning-free strict C17 syntax check.
-- Detect ncurses and audio dependencies with `pkg-config`.
+- [x] Detect ncurses and audio dependencies with `pkg-config`, retaining
+  linker fallbacks for older environments.
 - Add Linux, macOS, and MinGW CI.
 - Separate install prefix from packaging `DESTDIR`.
 - Add release archives and current Linux/Windows packaging.
