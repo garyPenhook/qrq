@@ -1,3 +1,35 @@
+0.3.6 / 2023-??-??   Fabian Kurz <fabian@fkurz.net>
+	* Configurable speed step after each call (tnx DF7CB)
+	* Option to stop after an error for review (tnx K7MOZ, EI6LA)
+
+0.3.5 / 2022-01-24   Fabian Kurz <fabian@fkurz.net>
+	* Fix handling of PgUp/PgDown (tnx W4MSL)
+	* In unlimited attempt, actually play *all* items from
+	  callbase (not -1) (tnx W4MSL)
+
+0.3.4 / 2022-01-22   Fabian Kurz <fabian@fkurz.net>
+	* Updated Makefile for OS X (tnx David Winarsky, Jon Nall)
+	* Accept - for / (easier for keyboard layouts where
+	  / requires pressing shift - tnx DF4TS)
+	* F8 toggles between complete toplist or only user's own
+	  attempts.
+	* Add KG7IEL's patches from (Debian #997190)
+	* Add word lists from Tom Mozdzen
+	* Handle long words better (up to 28 characters - tnx SQ6JNX)
+	* Add characters: . , = ? (tnx W4MSL)
+
+0.3.3 / 2019-05-09   Fabian Kurz <fabian@fkurz.net>
+	* Generate summary files for each attempt (idea by K0MP)
+	* Update callsign database and toplist
+	* Minor bug fixes and cleanup
+
+0.3.2 / 2019-03-09   Fabian Kurz <fabian@fkurz.net>
+	* Fixed occasional crashes on Windows (tnx Michael Fluegemann KE8AQW)
+	* Allow spaces in words/"callsigns" (requested by several users)
+	* Fix segfault on very slow CW speeds (closes debian bug#825862, tnx DJ3EI)
+	* Call gnuplot with -p (persist) so the window stays open
+	* This version contains a .gitlab-ci.yml file with build instructions.
+
 0.3.1 / 2013-01-06   Fabian Kurz <fabian@fkurz.net>
 	* Fixed saving scores if toplist file is not in cwd (tnx ON4ACP)
 	* F7 repeats the _previous_ callsign/word (suggested by KU1T)

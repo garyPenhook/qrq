@@ -1,0 +1,80 @@
+image: dj1yfk/yfkbuild:latest
+
+stages:
+    - build
+    - package
+
+before_script:
+    - VERSION=`awk -F= '/^VERSION\?=/{print $2}' src/Makefile`
+    - echo qrq version $VERSION
+
+build_linux:
+    stage: build
+    tags:
+        - docker
+    script:
+        - pwd
+        - cd src
+        - ls -la
+        - make
+        - ls -ls
+
+    artifacts:
+        expire_in: 1 year
+        paths:
+            - src/qrq
+
+build_win32:
+    stage: build
+    tags:
+        - docker
+    script:
+        - pwd
+        - cd src
+        - wget https://invisible-mirror.net/archives/ncurses/win32/mingw32.zip
+        - unzip mingw32.zip
+        - ls -la
+        - make USE_WIN32=YES USE_PA=NO
+        - mv qrq qrq.exe
+        - ls -ls
+    artifacts:
+        expire_in: 1 year
+        paths:
+            - src/qrq.exe
+
+build_release_package:
+    stage: build 
+    tags:
+        - docker
+    script:
+        - pwd
+        - cd src
+        - ls -la
+        - make dist
+        - cd ../releases
+        - ls -ltra
+    artifacts:
+        expire_in: 1 year
+        paths:
+            - releases/
+
+make_installer:
+    stage: package
+    tags:
+        - docker
+    dependencies:
+        - build_win32
+        - build_release_package
+    script:
+        - ls -la
+        - ls -la releases
+        - cd releases/qrq-$VERSION
+        - cp ../../src/qrq.exe .
+        - ls -la
+        - sed -i "s/_VERSION_/$VERSION/" qrqinstaller.nsi
+        - makensis qrqinstaller.nsi
+        - ls -la
+    artifacts:
+        expire_in: 1 year
+        paths:
+            - releases/qrq-*/qrq-*.exe

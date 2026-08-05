@@ -1,7 +1,7 @@
 /* 
 Copyright (C) 2006-2007  Fabian Kurz
  
-$Id: oss.c 40 2008-06-22 14:08:40Z dj1yfk $
+$Id$
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
