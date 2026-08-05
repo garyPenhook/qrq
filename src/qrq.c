@@ -51,6 +51,9 @@ typedef int AUDIO_HANDLE;
 #include <sys/types.h>
 #include <errno.h>
 #include <stdio.h>
+#ifndef WIN32
+#include <signal.h>
+#endif
 #ifdef WIN32
 #include <windows.h>
 #endif
@@ -157,6 +160,9 @@ static int attemptvalid=1;				/* 1 = not using any "cheats" */
 static unsigned long int nrofcalls=0;	
 static int toplist_own=0;               /* show only own call on toplist */
 static int call_maxlen = 0;				/* maximum length of a callsign/word from current database */
+#ifndef WIN32
+static volatile sig_atomic_t resize_pending = 0;
+#endif
 
 long samplerate=44100;
 static long long_i;
@@ -199,6 +205,10 @@ static void update_parameter_dialog(void);
 static void start_summary_file(void);
 static void close_summary_file(void);
 static int append_summary(const char *format, ...);
+#ifndef WIN32
+static void note_terminal_resize(int signal_number);
+static void apply_terminal_resize(void);
+#endif
 static int validchar(int c);
 static void free_calls(void);
 static int copy_file(const char *source_path, const char *destination_path);
@@ -301,6 +311,9 @@ int main (int argc, char *argv[]) {
 	curs_set(FALSE);
 	keypad(stdscr, TRUE);
 	scrollok(stdscr, FALSE);
+#ifndef WIN32
+	signal(SIGWINCH, note_terminal_resize);
+#endif
 	
 	printw("qrq v%s - Copyright (C) 2006-2021 Fabian Kurz, DJ5CW\n", VERSION);
 	printw("This is free software, and you are welcome to redistribute it\n");
@@ -386,6 +399,9 @@ int main (int argc, char *argv[]) {
 
 /* very outter loop */
 while (1) {	
+#ifndef WIN32
+	apply_terminal_resize();
+#endif
 
 /* status 1 = running an attempt of 50 calls */	
 while (status == 1) {
@@ -1457,6 +1473,28 @@ static int clear_display(void) {
 	}
 	return 0;
 }
+
+#ifndef WIN32
+static void note_terminal_resize(int signal_number) {
+	(void)signal_number;
+	resize_pending = 1;
+}
+
+static void apply_terminal_resize(void) {
+	if (!resize_pending) {
+		return;
+	}
+	resize_pending = 0;
+	resizeterm(0, 0);
+	clearok(stdscr, TRUE);
+	if (top_w != NULL) touchwin(top_w);
+	if (mid_w != NULL) touchwin(mid_w);
+	if (conf_w != NULL) touchwin(conf_w);
+	if (bot_w != NULL) touchwin(bot_w);
+	if (inf_w != NULL) touchwin(inf_w);
+	if (right_w != NULL) touchwin(right_w);
+}
+#endif
 
 /* clear parameter display */
 static int clear_parameter_display(void) {

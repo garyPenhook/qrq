@@ -61,5 +61,7 @@ practice.
 
 - Configurable pitch range, volume, spacing, and independent rise/fall times.
 - Optional QRM, QRN, fading, and pileup simulation.
-- Terminal resize handling, configurable keys, and accessible color themes.
+- [~] Terminal resize handling, configurable keys, and accessible color themes.
+  POSIX terminals now refresh ncurses state after SIGWINCH; configurable keys
+  and themes remain.
 - Headless practice generation and WAV export.
