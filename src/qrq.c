@@ -1191,7 +1191,11 @@ static void close_summary_file () {
     time_t t;
     struct tm *tmp;
     char time_fmt[256];
-    char filename[PATH_MAX];
+    char *filename;
+    size_t filename_len;
+    size_t path_len;
+    size_t call_len;
+    size_t time_len;
 
     t = time(NULL);
     tmp = localtime(&t);
@@ -1206,15 +1210,31 @@ static void close_summary_file () {
     s_pos += sprintf(summary + s_pos, "\r\n");
     s_pos += sprintf(summary + s_pos, "Score: %d, Max. speed (CpM/WpM): %d / %d\r\nSaved at: %s\r\n", score, maxspeed, maxspeed/5, time_fmt);
 
-    snprintf(filename, PATH_MAX, "%s/%s-%s.txt", sumfilepath, mycall, time_fmt);
+	path_len = strlen(sumfilepath);
+	call_len = strlen(mycall);
+	time_len = strlen(time_fmt);
+	if (path_len > SIZE_MAX - call_len - time_len - 7) {
+		fprintf(stderr, "Summary filename is too long.\n");
+		return;
+	}
+	filename_len = path_len + call_len + time_len + 7;
+	filename = malloc(filename_len);
+	if (filename == NULL) {
+		fprintf(stderr, "Out of memory while creating summary filename.\n");
+		return;
+	}
+	(void)snprintf(filename, filename_len, "%s/%s-%s.txt", sumfilepath, mycall, time_fmt);
 
 	if ((fh = fopen(filename, "w")) == NULL) {
 		printf("Unable to open summary file (%s)!\r\n", filename);
-		exit(EXIT_FAILURE);
+		free(filename);
+		return;
 	}
 
-    fwrite(summary, 1, s_pos, fh);
-    fclose(fh);
+	if (fwrite(summary, 1, (size_t)s_pos, fh) != (size_t)s_pos) {
+		fprintf(stderr, "Unable to write summary file (%s)!\n", filename);
+	}
+	fclose(fh);
 	
     for (int i = 12; i <= 15; i++) {
         mvwprintw(mid_w,i,2, "                                                         ");
@@ -1223,6 +1243,7 @@ static void close_summary_file () {
 	mvwprintw(mid_w,13,1, " Written detailed summary of this attempt to:");
 	mvwprintw(mid_w,14,2, "%s", filename);
     wrefresh(mid_w);
+	free(filename);
 
 }
 

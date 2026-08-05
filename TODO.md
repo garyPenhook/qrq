@@ -87,7 +87,6 @@ PulseAudio has not been built locally because `pulse/simple.h` and the
 
 ## Known compiler/static-analysis debt
 
-- `close_summary_file()` silently truncates an overlong output path.
 - Many no-argument functions use old `func()` declarations instead of
   `func(void)`.
 - Several signed/unsigned comparisons involve `strlen()` and call counts.
