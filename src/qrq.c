@@ -115,7 +115,8 @@ static int initialspeed=200;			/* initial speed. to be read from file*/
 static int mincharspeed=0;				/* min. char. speed, below: farnsworth*/
 static int speed=200;					/* current speed in cpm */
 static int maxspeed=0;
-static int speedstep=10;				/* speed increase/decrease after attempts */
+static int speedupstep=10;				/* speed increase after correct copies */
+static int speeddownstep=10;			/* speed decrease after incorrect copies */
 static int stoponerror=0;               /* after an error, stop and wait for 2nd enter */
 static int freq=800;					/* current cw sidetone freq */
 static int errornr=0;					/* number of errors in attempt */
@@ -378,8 +379,8 @@ while (status == 1) {
 	mvwaddstr(mid_w,3,2, "from a database will be sent. After each callsign,");
 	mvwaddstr(mid_w,4,2, "enter what you have heard. If you copied correctly,");
 	mvwaddstr(mid_w,5,2, "full points are credited and the speed increases by");
-	mvwprintw(mid_w,6,2, "%d LpM -- otherwise the speed decreases and only a ",
-			speedstep);
+	mvwprintw(mid_w,6,2, "+%d LpM; errors decrease it by %d LpM.",
+			speedupstep, speeddownstep);
 	mvwaddstr(mid_w,7,2, "fraction of the points, depending on the number of");
 	mvwaddstr(mid_w,8,2, "errors is credited.");
 	mvwaddstr(mid_w,10,2, "F6 repeats a callsign once, F10 quits.");
@@ -734,12 +735,20 @@ while ((j = getch()) != 0) {
 			}
 			break;
 		case KEY_PPAGE:
-			speedstep += 2;
+			speedupstep += 2;
 			break;
 		case KEY_NPAGE:
-			if (speedstep >= 4) {
-				speedstep -= 2;
+			if (speedupstep >= 4) {
+				speedupstep -= 2;
 			}
+			break;
+		case ',':
+			if (speeddownstep >= 4) {
+				speeddownstep -= 2;
+			}
+			break;
+		case '.':
+			speeddownstep += 2;
 			break;
 		case 'c':
 			readline(conf_w, 6, 25, mycall, CAPITALS_ON, 8);
@@ -844,8 +853,8 @@ void update_parameter_dialog () {
 					"    up/down", initialspeed, initialspeed/5);
 	mvwprintw(conf_w,3,2, "Min. character Speed:  %3d CpM / %3d WpM" 
 					"    left/right", mincharspeed, mincharspeed/5);
-	mvwprintw(conf_w,4,2, "Speed stepping:        %3d CpM          " 
-					"    PgUp/PgDn", speedstep);
+	mvwprintw(conf_w,4,2, "Speed stepping:        +%3d/-%-3d CpM   "
+					" PgUp/PgDn ,/.", speedupstep, speeddownstep);
 	mvwprintw(conf_w,5,2, "CW rise/falltime (ms): %1.1f           " 
 					"       +/-", edge);
 	mvwprintw(conf_w,6,2, "Callsign:              %-14s" 
@@ -1128,7 +1137,7 @@ static int calc_score (char * realcall, char * input, int spd, char * output, in
 		output[0]='-';						/* * == OK, no mistake */
 		output[1]='\0';	
 		if (speed > maxspeed) {maxspeed = speed;}
-		if (!fixspeed) speed += speedstep;
+		if (!fixspeed) speed += speedupstep;
 		if (attemptvalid) {
             score =  2*x*spd;						/* score */
 		}
@@ -1147,7 +1156,7 @@ static int calc_score (char * realcall, char * input, int spd, char * output, in
 		}
 		output[i]='\0';
 		if ((speed > 20) && !fixspeed) {
-			speed -= speedstep;
+			speed -= speeddownstep;
 			if (speed < 20)
 				speed = 20;
 		}
@@ -1496,12 +1505,33 @@ static int read_config () {
 			}
 			tmp[i]='\0';
 			if ((i = atoi(tmp)) > 0) {
-				speedstep = i;
-				printw("  line  %2d: speed step: %d\n", line, speedstep);
+				speedupstep = speeddownstep = i;
+				printw("  line  %2d: legacy speed step: %d\n", line, i);
 			}
 			else {
 				printw("  line  %2d: speed step: >%s< invalid. "
-								"Using default %d.\n", line, tmp, speedstep);
+								"Using defaults +%d/-%d.\n", line, tmp,
+								speedupstep, speeddownstep);
+			}
+		}
+		else if (tmp == strstr(tmp,"speedupstep=")) {
+			while (isdigit((unsigned char)(tmp[i] = tmp[12+i]))) {
+				i++;
+			}
+			tmp[i]='\0';
+			if ((i = atoi(tmp)) > 0) {
+				speedupstep = i;
+				printw("  line  %2d: speed-up step: %d\n", line, speedupstep);
+			}
+		}
+		else if (tmp == strstr(tmp,"speeddownstep=")) {
+			while (isdigit((unsigned char)(tmp[i] = tmp[14+i]))) {
+				i++;
+			}
+			tmp[i]='\0';
+			if ((i = atoi(tmp)) > 0) {
+				speeddownstep = i;
+				printw("  line  %2d: speed-down step: %d\n", line, speeddownstep);
 			}
 		}
 		else if (tmp == strstr(tmp,"dspdevice=")) {
@@ -1908,7 +1938,7 @@ static int save_config () {
 		"callsign", "callbase", "dspdevice", "initialspeed",
 		"mincharspeed", "waveform", "constanttone", "ctonefreq",
 		"fixspeed", "unlimitedattempt", "f6", "risetime", "speedstep",
-		"sessionlength", "stoponerror"
+		"speedupstep", "speeddownstep", "sessionlength", "stoponerror"
 	};
 	FILE *fh = NULL;
 	char tmp[PATH_MAX + 80];
@@ -1976,8 +2006,10 @@ static int save_config () {
 			case 9: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], unlimitedattempt); break;
 			case 10: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], f6); break;
 			case 11: written = snprintf(tmp, sizeof(tmp), "%s=%f ", confopts[i], edge); break;
-			case 12: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], speedstep); break;
-			case 13: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], sessionlength); break;
+			case 12: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], speedupstep); break;
+			case 13: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], speedupstep); break;
+			case 14: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], speeddownstep); break;
+			case 15: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], sessionlength); break;
 			default: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], stoponerror); break;
 		}
 		if (written < 0 || (size_t)written >= sizeof(tmp)) {

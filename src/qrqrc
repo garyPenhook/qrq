@@ -7,7 +7,11 @@
 callsign=MYCALL       # your callsign
 initialspeed=100      # initial speed in Letters per Minute / LpM (5 LpM = 1 WpM)
 mincharspeed=100      # minimum character speed. below, Farnsworth is used
-speedstep=10          # speed increase/decrease after each attempt in LpM
+# legacy shared speed step; retained for compatibility with older qrq configs
+speedstep=10
+# independent speed change after a correct or incorrect copy (in LpM)
+speedupstep=10
+speeddownstep=10
 # number of calls per session; 50 is the standard, comparable high-score mode
 # (use the F5 configuration screen to change it in steps of five)
 sessionlength=50

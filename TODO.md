@@ -104,7 +104,8 @@ PulseAudio has not been built locally because `pulse/simple.h` and the
 2. Extract pure scoring, Morse timing, callbase, and configuration modules.
 3. Add unit tests and sanitizer targets.
 4. Add GitHub Actions for GCC, Clang, OSS/no-audio, PulseAudio, and MinGW.
-5. Add independent up/down speed steps.
+5. [x] Add independent up/down speed steps; legacy `speedstep` configs remain
+   compatible, while `speedupstep` and `speeddownstep` persist separately.
 6. Add missed-item review and adaptive selection.
 7. Continue with statistics, terminal resize support, packaging, and advanced
    audio modes from `ROADMAP.md`.
