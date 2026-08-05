@@ -26,7 +26,7 @@ practice.
 
 - [x] Add GCC and Clang builds plus focused cppcheck analysis in GitHub Actions.
 - [x] Add ASan/UBSan build and command-line smoke-test coverage.
-- Add strict warning builds.
+- [x] Add a warning-free strict C17 syntax check.
 - Detect ncurses and audio dependencies with `pkg-config`.
 - Add Linux, macOS, and MinGW CI.
 - Separate install prefix from packaging `DESTDIR`.

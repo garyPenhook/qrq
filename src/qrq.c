@@ -92,7 +92,7 @@ typedef void *AUDIO_HANDLE;
 static char **calls = NULL;
 static size_t calls_allocated = 0;
 
-const static char *codetable[] = {
+static const char *codetable[] = {
 ".-", "-...", "-.-.", "-..", ".", "..-.", "--.", "....", "..",".---",
 "-.-",".-..","--","-.","---",".--.","--.-",".-.","...","-","..-","...-",
 ".--","-..-","-.--","--..","-----",".----","..---","...--","....-",".....",
@@ -239,6 +239,7 @@ WINDOW *right_w;				/* highscore list/settings		*/
 
 
 int main (int argc, char *argv[]) {
+	(void)argv;
 
   /* if built as osx bundle set DESTDIR to Resources dir of bundle */
 #ifdef OSX_BUNDLE
@@ -944,6 +945,7 @@ void callbase_dialog (void) {
 static int readline(WINDOW *win, int y, int x, char *line, int capitals, int len) {
 	int c;						/* character we read */
 	int i=0;
+	size_t line_len;
 
 	if (strlen(line) == 0) {p=0;}	/* cursor to start if no call in buffer */
 	
@@ -963,8 +965,9 @@ static int readline(WINDOW *win, int y, int x, char *line, int capitals, int len
 		c = wgetch(win);
 		if (c == '\n' && is_sending_complete())
 			break;
+		line_len = strlen(line);
 
-		if (validchar(c) && strlen(line) < (size_t) len) {
+		if (validchar(c) && line_len < (size_t)len) {
 
             // accept - as / for German keyboards (and other layouts where /
             // requires pressing shift)
@@ -972,12 +975,12 @@ static int readline(WINDOW *win, int y, int x, char *line, int capitals, int len
                 c = '/';
             }
 
-			line[strlen(line)+1]='\0';
+			line[line_len + 1] = '\0';
 			if (capitals) {
 				c = toupper(c);
 			}
 			if (mode == 1) {						/* insert */
-				for(i=strlen(line);i > p; i--) {	/* move all chars by one */
+				for(i = (int)line_len; i > p; i--) {	/* move all chars by one */
 					line[i] = line[i-1];
 				}
 			} 
@@ -986,27 +989,27 @@ static int readline(WINDOW *win, int y, int x, char *line, int capitals, int len
 		}
 		else if ((c == KEY_BACKSPACE || c == 127 || c == 9 || c == 8)
 						&& p != 0) {					/* BACKSPACE */
-			for (i=p-1;i < strlen(line); i++) {
+			for (i=p-1; i < (int)line_len; i++) {
 				line[i] =  line[i+1];
 			}
 			p--;
 		}
 		else if (c == KEY_DC && p < (int) strlen(line)) {	/* DELETE */
-			for (i=p;i < strlen(line); i++) {
+			for (i=p; i < (int)line_len; i++) {
 				line[i] =  line[i+1];
 			}
 		}
 		else if (c == KEY_LEFT && p != 0) {
 			p--;	
 		}
-		else if (c == KEY_RIGHT && p < strlen(line)) {
+		else if (c == KEY_RIGHT && p < (int)line_len) {
 			p++;
 		}
 		else if (c == KEY_HOME) {
 			p = 0;
 		}
 		else if (c == KEY_END) {
-			p = strlen(line);
+			p = (int)line_len;
 		}
 		else if (c == KEY_IC) {						/* INS/OVR */
 			if (mode == 1) { 
@@ -1149,7 +1152,7 @@ static int calc_score (char * realcall, char * input, int spd, char * output, in
 	}
 	else {									/* assemble error string */
 		errornr += 1;
-		if (strlen(input) >= x) {x =  strlen(input);}
+		if (strlen(input) >= (size_t)x) {x = (int)strlen(input);}
 		for (i=0;i < x;i++) {
 			if (realcall[i] != input[i]) {
 				m++;								/* mistake! */
@@ -1354,10 +1357,9 @@ static int show_error (char * realcall, char * wrongcall) {
 	// when call_maxlen <= CALL_MAX/2, we are showing the errors in two columns, otherwise just one.
 	int max_nr_err = call_maxlen <= CALL_MAX/2 ? 30 : 15;   
 	int max_disp_len = call_maxlen <= CALL_MAX/2 ? CALL_MAX/2 : CALL_MAX;
-	char fmt[80];
 
 	// cut entered call if it's longer than what we can display
-	if (strlen(wrongcall) > max_disp_len) {
+	if (strlen(wrongcall) > (size_t)max_disp_len) {
 		wrongcall[max_disp_len] = '\0';
 	}
 
@@ -1375,8 +1377,12 @@ static int show_error (char * realcall, char * wrongcall) {
 		x=30; y = (errornr % 16)+1;
 	}
 
-    snprintf(fmt, 20, "%%-%ds %%-%ds", call_maxlen <= CALL_MAX/2 ? CALL_MAX/2 : CALL_MAX, call_maxlen <= CALL_MAX/2 ? CALL_MAX/2 : CALL_MAX);
-	mvwprintw(mid_w,y,x, fmt, realcall, wrongcall);
+	if (call_maxlen <= CALL_MAX / 2) {
+		mvwprintw(mid_w, y, x, "%-14s %-14s", realcall, wrongcall);
+	}
+	else {
+		mvwprintw(mid_w, y, x, "%-28s %-28s", realcall, wrongcall);
+	}
 	wrefresh(mid_w);		
 	return 0;
 }
@@ -1836,7 +1842,7 @@ static void *morse(void *arg) {
 	 * dashes therefore are becoming longer by "ed" and the pauses
 	 * after them are shortened accordingly by "ed" samples */
 
-	for (i = 0; i < strlen(text); i++) {
+	for (i = 0; i < (int)strlen(text); i++) {
 		c = text[i];
 		if (isalpha(c)) {
 			code = codetable[c-65];
@@ -1868,7 +1874,7 @@ static void *morse(void *arg) {
 		
 		/* code is now available as string with - and . */
 
-		for (j = 0; j < strlen(code) ; j++) {
+		for (j = 0; j < (int)strlen(code); j++) {
 			c = code[j];
 			if (c == '.') {
 				if (tonegen(freq, dotlen + ed, waveform) != 0 ||
@@ -2683,7 +2689,7 @@ int read_callbase (void) {
 	
 	nr=0;
 	while (fgets(tmp,call_maxlen+2,fh) != NULL) {
-		for (i = 0; i < strlen(tmp); i++) {
+		for (i = 0; i < (int)strlen(tmp); i++) {
 				tmp[i] = toupper(tmp[i]);
 		}
 		tmp[i-1]='\0';				/* remove newline */
