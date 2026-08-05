@@ -104,6 +104,8 @@ PulseAudio has not been built locally because `pulse/simple.h` and the
 3. Add unit tests and sanitizer targets.
 4. [x] Add GitHub Actions for GCC/Clang and OSS/PulseAudio builds, plus
    cppcheck and an ASan/UBSan smoke test. Add MinGW coverage next.
+9. [x] Add a strict C17 syntax gate for implicit declarations and format
+   security errors; existing portability warnings remain visible.
 5. [x] Add independent up/down speed steps; legacy `speedstep` configs remain
    compatible, while `speedupstep` and `speeddownstep` persist separately.
 6. Add missed-item review and adaptive selection.
