@@ -39,6 +39,7 @@ WIN32_CURSES_LIBS ?= -lpdcurses
 INSTALL ?= install
 PKG_CONFIG ?= pkg-config
 TEST_CFLAGS ?= -std=c17 -Wall -Wextra -Wpedantic -Werror
+WINDRES ?= windres
 
 NCURSES_CFLAGS := $(shell $(PKG_CONFIG) --cflags ncurses 2>/dev/null)
 NCURSES_LIBS := $(shell $(PKG_CONFIG) --libs ncurses 2>/dev/null)
@@ -85,7 +86,7 @@ else ifeq ($(USE_PA), YES)
 else ifeq ($(USE_WIN32), YES)
 		override CFLAGS += -D WIN32 $(WIN32_CURSES_CFLAGS)
 		override LDFLAGS += -lwinmm -lpthread $(WIN32_CURSES_LIBS)
-		OBJECTS=qrq.o score.o callbase.o practice.o history.o config.o qrq.res
+		OBJECTS=qrq.o score.o callbase.o practice.o history.o config.o qrq-resource.o
 else
 		OBJECTS=qrq.o score.o callbase.o practice.o history.o config.o oss.o
 		override LDFLAGS += -lpthread $(NCURSES_LIBS)
@@ -99,6 +100,9 @@ qrq: $(OBJECTS)
 	
 .c.o:
 	$(CC) -Wall $(CPPFLAGS) $(CFLAGS) -c $<
+
+qrq-resource.o: qrq.rc qrq.ico
+	$(WINDRES) -i qrq.rc -O coff -o $@
 
 #.cpp.o:
 #	g++ $(CFLAGS) -c $<

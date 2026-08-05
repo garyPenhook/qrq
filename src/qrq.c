@@ -26,7 +26,7 @@ typedef int AUDIO_HANDLE;
 #include <pthread.h>			/* CW output will be in a separate thread */
 #endif
 #ifdef WIN32
-#include <curses.h>
+#include <pdcurses.h>
 #else
 #include <ncurses.h>
 #endif
