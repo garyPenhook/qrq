@@ -6,12 +6,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int normalize_line(char *line, size_t *length) {
+static int normalize_line(char *line, size_t *length, int at_end_of_file) {
 	size_t line_length = strlen(line);
-	if (line_length == 0 || line[line_length - 1] != '\n') {
+	if (line_length == 0) {
 		return -1;
 	}
-	line[--line_length] = '\0';
+	if (line[line_length - 1] == '\n') {
+		line[--line_length] = '\0';
+	} else if (!at_end_of_file) {
+		return -1;
+	}
 	if (line_length != 0 && line[line_length - 1] == '\r') {
 		line[--line_length] = '\0';
 	}
@@ -56,7 +60,7 @@ int qrq_callbase_load(const char *path, size_t minimum_length,
 		return -1;
 	}
 	while (fgets(line, sizeof(line), file) != NULL) {
-		if (normalize_line(line, &line_length) != 0) {
+		if (normalize_line(line, &line_length, feof(file)) != 0) {
 			errno = EOVERFLOW;
 			goto cleanup;
 		}
@@ -86,7 +90,7 @@ int qrq_callbase_load(const char *path, size_t minimum_length,
 	}
 	while (fgets(line, sizeof(line), file) != NULL) {
 		size_t i;
-		if (normalize_line(line, &line_length) != 0) {
+		if (normalize_line(line, &line_length, feof(file)) != 0) {
 			errno = EOVERFLOW;
 			goto cleanup;
 		}

@@ -1725,7 +1725,7 @@ static int read_config (void) {
 			}
         }
 		else if (tmp == strstr(tmp, "mincalllength=")) {
-			while (isdigit((unsigned char)(tmp[i] = tmp[14+i]))) {
+			while (isdigit((unsigned char)(tmp[i] = tmp[15+i]))) {
 				i++;
 			}
 			tmp[i] = '\0';

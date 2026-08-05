@@ -11,7 +11,7 @@ int main(void) {
 	FILE *file = fopen(path, "w");
 
 	assert(file != NULL);
-	fputs("k1abc\nDE\r\nWORD\n", file);
+	fputs("k1abc\nDE\r\nWORD", file);
 	assert(fclose(file) == 0);
 	assert(qrq_callbase_load(path, 1, QRQ_CALLBASE_MAX_LENGTH, &callbase) == 0);
 	assert(callbase.count == 3 && callbase.max_length == 5);
