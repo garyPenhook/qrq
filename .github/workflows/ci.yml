@@ -49,10 +49,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install cppcheck
+      - name: Install static-analysis dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes build-essential cppcheck
+          sudo apt-get install --yes build-essential cppcheck libncurses-dev libpulse-dev
 
       - name: Strict C17 syntax check
         run: |
@@ -114,8 +114,8 @@ jobs:
           msystem: MINGW64
           update: true
           install: >-
+            make
             mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-make
             mingw-w64-x86_64-pdcurses
 
       - name: Build native Windows executable
