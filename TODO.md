@@ -216,6 +216,16 @@ below are gaps those tests do not currently exercise.
   but no longer depress average scores or distort score trends.
 - [x] Make session eligibility monotonic. Once a running attempt enables a
   non-comparable mode, turning it off again cannot restore toplist eligibility.
+- [x] Make duplicate config keys save predictably. Since loading is
+  last-value-wins, F2 now updates the effective last assignment instead of an
+  earlier shadowed value.
+- [x] Reject corrupt history headers, incomplete final records, trailing CSV
+  fields, and oversized callsigns instead of appending or counting ambiguous
+  data.
+- [x] Repair an empty toplist with its required header, reject invalid record
+  widths at startup, and convert both LF and CRLF legacy toplists safely.
+- [x] Bound macOS bundle resource-path derivation and remove incomplete
+  first-run resource copies after read, write, or close failures.
 - [x] Use collision-resistant summary filenames. Summaries include seconds and
   a securely exclusive `mkstemp()` suffix; incomplete writes/close failures are
   reported and the partial new file is removed.
@@ -251,10 +261,11 @@ below are gaps those tests do not currently exercise.
 - [~] Add focused tests for config read/save round trips, CRLF/no-final-newline
   files, every option boundary, speed-down plus Farnsworth timing, word gaps,
   cumulative error counts past display wrap, abort eligibility, adaptive/review
-  scheduling, summary collisions, and malformed toplist/history files. Config
-  value replacement now covers spaced paths, inline comments, CRLF, appending,
-  and a final line without a newline; the remaining UI/audio cases still need
-  extraction or an integration harness.
+  scheduling, summary collisions, and malformed toplist files. Config value
+  replacement now covers spaced paths, duplicate keys, inline comments, CRLF,
+  appending, and a final line without a newline; history tests cover CRLF,
+  invalid headers, trailing fields, and incomplete records. The remaining
+  UI/audio cases still need extraction or an integration harness.
 - [x] Exercise unit tests under ASan/UBSan in CI. The sanitizer job currently
   runs the focused suites as well as `qrq -h`, and Makefile test recipes honor
   caller-provided sanitizer compiler flags.

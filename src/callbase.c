@@ -179,6 +179,12 @@ int qrq_callbase_load(const char *path, const struct qrq_callbase_filter *filter
 				!matches_filter(line, line_length, filter)) {
 			continue;
 		}
+		/* The database may have been replaced between the counting and
+		 * loading passes. Never trust the earlier count as an array bound. */
+		if (index >= selected) {
+			errno = EOVERFLOW;
+			goto cleanup;
+		}
 		callbase->items[index] = malloc(line_length + 1);
 		if (callbase->items[index] == NULL) {
 			goto cleanup;

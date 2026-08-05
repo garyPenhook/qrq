@@ -235,6 +235,9 @@ static int validchar(int c);
 static void free_calls(void);
 static int copy_file(const char *source_path, const char *destination_path);
 static int write_file_atomic(const char *path, const void *data, size_t length);
+#ifdef OSX_BUNDLE
+static int set_bundle_resource_directory(const char *program_path);
+#endif
 
 /* The audio worker and ncurses input loop run concurrently.  Do not access
  * this state directly: a plain int (or volatile int) is a data race. */
@@ -363,20 +366,21 @@ WINDOW *right_w;				/* highscore list/settings		*/
 
 
 int main (int argc, char *argv[]) {
-	(void)argv;
-
   /* if built as osx bundle set the resource prefix to its Resources dir */
 #ifdef OSX_BUNDLE
-  char tempdir[PATH_MAX]="";
-  char* p_slash = strrchr(argv[0], '/');
-  strncpy(tempdir, argv[0], p_slash - argv[0]);
-  p_slash = strrchr(tempdir, '/');
-  if(p_slash != NULL) {
-    strncpy(destdir, tempdir, p_slash - tempdir);
-  }
-  strcat(destdir, "/Resources");
+	if (set_bundle_resource_directory(argv[0]) != 0) {
+		fprintf(stderr, "Unable to locate the application bundle resources.\n");
+		return EXIT_FAILURE;
+	}
 #else
-  strcpy(destdir, PREFIX);
+	int prefix_length;
+
+	(void)argv;
+	prefix_length = snprintf(destdir, sizeof(destdir), "%s", PREFIX);
+	if (prefix_length < 0 || (size_t)prefix_length >= sizeof(destdir)) {
+		fprintf(stderr, "The configured resource prefix is too long.\n");
+		return EXIT_FAILURE;
+	}
 #endif
 
 	char abort = 0;
@@ -432,7 +436,10 @@ int main (int argc, char *argv[]) {
 
 	/* check if the toplist is in the suitable format. as of 0.0.7, each line
 	 * is 31 characters long, with the added time stamp */
-	check_toplist();
+	if (check_toplist() != 0) {
+		endwin();
+		return EXIT_FAILURE;
+	}
 
 	/* buffer for audio */
 	for (long_i=0;long_i<88200;long_i++) {
@@ -636,8 +643,14 @@ while (status == 1) {
 			i = (int)selected_index; /* Review entries may already be marked used. */
 		}
 		else {
-			i = (int)qrq_practice_choose(nrofcalls, call_used,
+			selected_index = qrq_practice_choose(nrofcalls, call_used,
 					call_mistakes, adaptiveselection, (uint32_t)rand());
+			if (selected_index == QRQ_PRACTICE_NO_ITEM ||
+					selected_index > (size_t)INT_MAX) {
+				i = -1;
+			} else {
+				i = (int)selected_index;
+			}
 		}
 		if (i < 0) {
 			fprintf(stderr, "No unused callbase entries remain.\n");
@@ -1424,26 +1437,34 @@ static int display_toplist (void) {
 		fprintf(stderr, "Couldn't read or create file '%s'!", tlfilename);
 		exit(EXIT_FAILURE);
 	}
-	rewind(fh);				/* a+ -> end of file, we want the beginning */
-	(void) fgets(tmp, 34, fh);		/* first line not used */
-	while ((feof(fh) == 0) && i < 21) {
-		if (fgets(tmp, 34, fh) != NULL) {
-			tmp[17]='\0';
-			if (toplist_own) {
-				if (qrq_toplist_callsign_matches(tmp, mycall)) {
-					mvwaddstr(right_w,i+2, 2, tmp);
-					i++;
-				}
-			}
-			else {
-				if (qrq_toplist_callsign_matches(tmp, mycall)) {
-					wattron(right_w, A_BOLD);
-				}
+	if (fseek(fh, 0, SEEK_SET) != 0) {
+		fclose(fh);
+		return -1;
+	}
+	if (fgets(tmp, 34, fh) == NULL && ferror(fh)) {
+		fclose(fh);
+		return -1;
+	}
+	while (i < 21 && fgets(tmp, 34, fh) != NULL) {
+		tmp[17]='\0';
+		if (toplist_own) {
+			if (qrq_toplist_callsign_matches(tmp, mycall)) {
 				mvwaddstr(right_w,i+2, 2, tmp);
 				i++;
-				wattroff(right_w, A_BOLD);
 			}
 		}
+		else {
+			if (qrq_toplist_callsign_matches(tmp, mycall)) {
+				wattron(right_w, A_BOLD);
+			}
+			mvwaddstr(right_w,i+2, 2, tmp);
+			i++;
+			wattroff(right_w, A_BOLD);
+		}
+	}
+	if (ferror(fh)) {
+		fclose(fh);
+		return -1;
 	}
 	// delete remaining lines
 	while (i < 21) {
@@ -1456,7 +1477,9 @@ static int display_toplist (void) {
 		}
 		i++;
 	}
-	fclose(fh);
+	if (fclose(fh) != 0) {
+		return -1;
+	}
 	wrefresh(right_w);
 	return 0;
 }
@@ -2620,14 +2643,20 @@ cleanup:
 		
 /* Add timestamps to toplist file if not there yet */
 static int check_toplist (void) {
+	static const char empty_toplist[] = "Toplist   999999 999 1181234567\n";
 	char first_line[35] = "";
 	char *old_data = NULL;
 	char *converted = NULL;
 	FILE *fh = NULL;
 	size_t file_size;
+	size_t first_line_length;
+	size_t old_line_length;
+	size_t new_line_length;
+	size_t converted_size;
 	size_t old_offset;
 	size_t new_offset;
 	long file_length;
+	int use_crlf;
 	int result = -1;
 
 	if ((fh = fopen(tlfilename, "rb")) == NULL) {
@@ -2641,29 +2670,55 @@ static int check_toplist (void) {
 			fprintf(stderr, "Unable to read toplist file %s!\n", tlfilename);
 			goto cleanup;
 		}
+		if (fclose(fh) != 0) {
+			fh = NULL;
+			goto cleanup;
+		}
+		fh = NULL;
+		result = write_file_atomic(tlfilename, empty_toplist,
+				sizeof(empty_toplist) - 1);
+		goto cleanup;
+	}
+	first_line_length = strlen(first_line);
+	use_crlf = first_line_length >= 2 &&
+			first_line[first_line_length - 2] == '\r' &&
+			first_line[first_line_length - 1] == '\n';
+	if ((first_line_length == 32 && !use_crlf) ||
+			(first_line_length == 33 && use_crlf)) {
+		new_line_length = first_line_length;
+		if (fseek(fh, 0, SEEK_END) != 0 || (file_length = ftell(fh)) < 0 ||
+				(size_t)file_length % new_line_length != 0) {
+			fprintf(stderr, "Invalid toplist format in %s!\n", tlfilename);
+			goto cleanup;
+		}
 		result = 0;
 		goto cleanup;
 	}
-	if (strlen(first_line) != 21) {
-		result = 0;
+	if ((first_line_length != 21 || use_crlf) &&
+			(first_line_length != 22 || !use_crlf)) {
+		fprintf(stderr, "Invalid toplist format in %s!\n", tlfilename);
 		goto cleanup;
 	}
+	old_line_length = first_line_length;
+	new_line_length = use_crlf ? 33 : 32;
 
 	if (fseek(fh, 0, SEEK_END) != 0 || (file_length = ftell(fh)) < 0) {
 		fprintf(stderr, "Unable to determine size of toplist file %s!\n", tlfilename);
 		goto cleanup;
 	}
 	file_size = (size_t)file_length;
-	if (file_size % 21 != 0 || file_size / 21 > SIZE_MAX / 32) {
+	if (file_size % old_line_length != 0 ||
+			file_size / old_line_length > SIZE_MAX / new_line_length) {
 		fprintf(stderr, "Invalid old-format toplist file %s!\n", tlfilename);
 		goto cleanup;
 	}
+	converted_size = file_size / old_line_length * new_line_length;
 	if (fseek(fh, 0, SEEK_SET) != 0) {
 		fprintf(stderr, "Unable to rewind toplist file %s!\n", tlfilename);
 		goto cleanup;
 	}
 	old_data = malloc(file_size == 0 ? 1 : file_size);
-	converted = malloc(file_size / 21 * 32);
+	converted = malloc(converted_size == 0 ? 1 : converted_size);
 	if (old_data == NULL || converted == NULL) {
 		fprintf(stderr, "Out of memory while converting toplist.\n");
 		goto cleanup;
@@ -2681,13 +2736,24 @@ static int check_toplist (void) {
 
 	printw("Toplist file in old format. Converting...");
 	for (old_offset = 0, new_offset = 0; old_offset < file_size;
-			old_offset += 21, new_offset += 32) {
+			old_offset += old_line_length, new_offset += new_line_length) {
+		if (old_data[old_offset + 20] != (use_crlf ? '\r' : '\n') ||
+				(use_crlf && old_data[old_offset + 21] != '\n')) {
+			fprintf(stderr, "Invalid old-format toplist file %s!\n", tlfilename);
+			goto cleanup;
+		}
 		memcpy(converted + new_offset, old_data + old_offset, 20);
 		converted[new_offset + 20] = ' ';
-		memcpy(converted + new_offset + 21, "1181234567\n", 11);
+		memcpy(converted + new_offset + 21, "1181234567", 10);
+		if (use_crlf) {
+			converted[new_offset + 31] = '\r';
+			converted[new_offset + 32] = '\n';
+		} else {
+			converted[new_offset + 31] = '\n';
+		}
 	}
 
-	if (write_file_atomic(tlfilename, converted, file_size / 21 * 32) != 0) {
+	if (write_file_atomic(tlfilename, converted, converted_size) != 0) {
 		fprintf(stderr, "Unable to atomically update toplist file %s!\n", tlfilename);
 		goto cleanup;
 	}
@@ -2710,6 +2776,8 @@ static int copy_file(const char *source_path, const char *destination_path) {
 	FILE *source = NULL;
 	FILE *destination = NULL;
 	size_t bytes_read;
+	int destination_opened = 0;
+	int saved_errno = 0;
 	int result = -1;
 
 	source = fopen(source_path, "rb");
@@ -2720,12 +2788,19 @@ static int copy_file(const char *source_path, const char *destination_path) {
 	if (destination == NULL) {
 		goto cleanup;
 	}
+	destination_opened = 1;
 	while ((bytes_read = fread(buffer, 1, sizeof(buffer), source)) != 0) {
 		if (fwrite(buffer, 1, bytes_read, destination) != bytes_read) {
+			saved_errno = errno != 0 ? errno : EIO;
 			goto cleanup;
 		}
 	}
-	if (ferror(source) || fclose(destination) != 0) {
+	if (ferror(source)) {
+		saved_errno = errno != 0 ? errno : EIO;
+		goto cleanup;
+	}
+	if (fclose(destination) != 0) {
+		saved_errno = errno;
 		destination = NULL;
 		goto cleanup;
 	}
@@ -2734,13 +2809,59 @@ static int copy_file(const char *source_path, const char *destination_path) {
 
 cleanup:
 	if (destination != NULL) {
-		fclose(destination);
+		if (fclose(destination) != 0 && saved_errno == 0) {
+			saved_errno = errno;
+		}
 	}
 	if (source != NULL) {
-		fclose(source);
+		if (fclose(source) != 0 && result == 0) {
+			result = -1;
+			saved_errno = errno;
+		}
+	}
+	if (result != 0 && destination_opened) {
+		(void)unlink(destination_path);
+	}
+	if (saved_errno != 0) {
+		errno = saved_errno;
 	}
 	return result;
 }
+
+#ifdef OSX_BUNDLE
+static int set_bundle_resource_directory(const char *program_path) {
+	static const char suffix[] = "/Resources";
+	char executable_directory[PATH_MAX];
+	const char *separator;
+	size_t directory_length;
+	size_t contents_length;
+
+	if (program_path == NULL || (separator = strrchr(program_path, '/')) == NULL) {
+		errno = EINVAL;
+		return -1;
+	}
+	directory_length = (size_t)(separator - program_path);
+	if (directory_length == 0 || directory_length >= sizeof(executable_directory)) {
+		errno = ENAMETOOLONG;
+		return -1;
+	}
+	memcpy(executable_directory, program_path, directory_length);
+	executable_directory[directory_length] = '\0';
+	separator = strrchr(executable_directory, '/');
+	if (separator == NULL) {
+		errno = EINVAL;
+		return -1;
+	}
+	contents_length = (size_t)(separator - executable_directory);
+	if (contents_length > sizeof(destdir) - sizeof(suffix)) {
+		errno = ENAMETOOLONG;
+		return -1;
+	}
+	memcpy(destdir, executable_directory, contents_length);
+	memcpy(destdir + contents_length, suffix, sizeof(suffix));
+	return 0;
+}
+#endif
 
 /* Write through a same-directory temporary file, then replace the destination.
  * rename() is atomic on POSIX when both paths reside on the same filesystem. */

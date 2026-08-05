@@ -27,5 +27,33 @@ int main(void) {
 	assert(fclose(file) == 0);
 	assert(strstr(contents, "qrq-history-v1\n") == contents);
 	remove(path);
+
+	file = fopen(path, "wb");
+	assert(file != NULL);
+	assert(fputs("qrq-history-v1\r\n"
+			"100,K1ABC,50,0,300,275,1,trailing\r\n"
+			"101,K1ABC,50,1,250,260,1\r\n", file) >= 0);
+	assert(fclose(file) == 0);
+	assert(qrq_history_summarize(path, "K1ABC", &summary) == 0);
+	assert(summary.sessions == 1 && summary.average_score == 250);
+	remove(path);
+
+	file = fopen(path, "wb");
+	assert(file != NULL);
+	assert(fputs("not-a-history-file\n", file) >= 0);
+	assert(fclose(file) == 0);
+	assert(qrq_history_append(path, &entry) == -1);
+	remove(path);
+
+	file = fopen(path, "wb");
+	assert(file != NULL);
+	assert(fputs("qrq-history-v1\npartial", file) >= 0);
+	assert(fclose(file) == 0);
+	assert(qrq_history_summarize(path, "K1ABC", &summary) == 0);
+	assert(summary.sessions == 0);
+	assert(qrq_history_append(path, &entry) == -1);
+	remove(path);
+	assert(qrq_history_append(path, &(struct qrq_history_entry){
+			100, "", 50, 0, 100, 200, 1}) == -1);
 	return 0;
 }

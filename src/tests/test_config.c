@@ -118,6 +118,14 @@ int main(void) {
 	assert(strcmp(config_text, "mykey=leave alone\nkey=new\n") == 0);
 	free(config_text);
 
+	config_text = malloc(sizeof("key=first\nkey = effective # keep\n"));
+	assert(config_text != NULL);
+	strcpy(config_text, "key=first\nkey = effective # keep\n");
+	config_length = strlen(config_text);
+	assert(qrq_config_set_value(&config_text, &config_length, "key", "saved") == 0);
+	assert(strcmp(config_text, "key=first\nkey = saved # keep\n") == 0);
+	free(config_text);
+
 	config_text = malloc(1);
 	assert(config_text != NULL);
 	config_text[0] = '\0';
@@ -125,6 +133,7 @@ int main(void) {
 	assert(qrq_config_set_value(&config_text, &config_length, "key", "value") == 0);
 	assert(strcmp(config_text, "key=value\n") == 0);
 	assert(config_length == strlen(config_text));
+	assert(qrq_config_set_value(&config_text, &config_length, "bad-key", "x") == -1);
 	free(config_text);
 	return 0;
 }

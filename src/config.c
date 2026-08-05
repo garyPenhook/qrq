@@ -217,6 +217,13 @@ int qrq_config_set_value(char **text, size_t *length, const char *key,
 		errno = EINVAL;
 		return -1;
 	}
+	for (const unsigned char *key_cursor = (const unsigned char *)key;
+			*key_cursor != '\0'; key_cursor++) {
+		if (!isalnum(*key_cursor) && *key_cursor != '_') {
+			errno = EINVAL;
+			return -1;
+		}
+	}
 	key_length = strlen(key);
 	value_length = strlen(value);
 	use_crlf = strstr(*text, "\r\n") != NULL;
@@ -270,8 +277,9 @@ int qrq_config_set_value(char **text, size_t *length, const char *key,
 				isspace((unsigned char)(*text)[value_end - 1])) {
 			value_end--;
 		}
+		/* Configuration loading is last-value-wins, so update the last
+		 * matching assignment when a hand-edited file contains duplicates. */
 		found = 1;
-		break;
 	}
 
 	if (found) {

@@ -26,9 +26,9 @@ int qrq_config_parse_double(const char *text, double minimum, double maximum,
 int qrq_config_copy_string(const char *text, char *destination, size_t capacity,
 		int uppercase);
 
-/* Replace one option value while preserving indentation, spacing, comments,
- * and line endings. If the key is absent, append it using the file's existing
- * newline style. The buffer remains caller-owned. */
+/* Replace the effective (last) option value while preserving indentation,
+ * spacing, comments, and line endings. If the key is absent, append it using
+ * the file's existing newline style. The buffer remains caller-owned. */
 int qrq_config_set_value(char **text, size_t *length, const char *key,
 		const char *value);
 
