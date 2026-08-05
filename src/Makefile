@@ -31,6 +31,10 @@ else
 	CC=gcc
 endif
 
+# Set these when PDCurses is not found by the Windows compiler by default.
+WIN32_CURSES_CFLAGS ?=
+WIN32_CURSES_LIBS ?= -lpdcurses
+
 INSTALL ?= install
 PKG_CONFIG ?= pkg-config
 
@@ -77,9 +81,9 @@ else ifeq ($(USE_PA), YES)
 		override LDFLAGS += -lpthread $(PULSE_LIBS) $(NCURSES_LIBS)
 		OBJECTS=qrq.o score.o callbase.o pulseaudio.o
 else ifeq ($(USE_WIN32), YES)
-		override CFLAGS += -D WIN32 -Iinclude -Iinclude/ncursesw -DNCURSES_STATIC
-		override LDFLAGS += -lwinmm -lpthread
-		OBJECTS=qrq.o score.o callbase.o qrq.res lib/libncursesw.a
+		override CFLAGS += -D WIN32 $(WIN32_CURSES_CFLAGS)
+		override LDFLAGS += -lwinmm -lpthread $(WIN32_CURSES_LIBS)
+		OBJECTS=qrq.o score.o callbase.o qrq.res
 else
 		OBJECTS=qrq.o score.o callbase.o oss.o
 		override LDFLAGS += -lpthread $(NCURSES_LIBS)

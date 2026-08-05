@@ -25,7 +25,11 @@ typedef int AUDIO_HANDLE;
 #ifndef WIN_THREADS
 #include <pthread.h>			/* CW output will be in a separate thread */
 #endif
+#ifdef WIN32
+#include <curses.h>
+#else
 #include <ncurses.h>
+#endif
 #include <stdlib.h>
 #include <string.h>
 #include <libgen.h>				/* basename */
