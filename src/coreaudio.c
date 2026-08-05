@@ -53,7 +53,7 @@ static OSStatus playbackCallback(void *inRefCon,
 	(void)inBusNumber;
 	(void)inNumberFrames;
 	if (ioData == NULL) {
-		return paramErr;
+		return kAudio_ParamError;
 	}
 
 	for (i = 0; i < ioData->mNumberBuffers; ++i) {
