@@ -176,21 +176,20 @@ below are gaps those tests do not currently exercise.
 - [x] Prevent signed session-score overflow and define the supported score
   range. Accumulation now saturates at the fixed-width toplist limit of 999999,
   and the writer rejects any out-of-contract value explicitly.
-- [ ] Do not allow F5 to mutate audio globals while the worker is playing.
-  Opening settings during a call can change speed, pitch, waveform, volume,
-  noise, or edge concurrently and resets current speed to `initialspeed`.
-  Snapshot transmission parameters per worker or wait before editing them.
-- [ ] Repair Windows audio/thread error handling. Stray semicolons discard the
-  results of `waveOutOpen()` and `WaitForSingleObject()`; event, buffer, and
-  `_beginthreadex()` results are not consistently checked, and the worker entry
-  point should use the exact Windows calling convention/signature.
-- [ ] Harden Core Audio initialization and playback synchronization. Check
-  allocation and every AudioUnit status, clean up partial initialization, use
-  a predicate loop for the condition variable, and avoid unsafe/blocking work
-  in the render callback.
-- [ ] Handle partial/interrupted OSS writes instead of mapping `write_audio()`
-  to one unchecked `write()` call; propagate backend playback failures to the
-  UI consistently for OSS, PulseAudio, Core Audio, and Windows.
+- [x] Prevent F5 from mutating audio globals while the worker is playing. A
+  centralized, checked worker lifecycle now joins active playback before the
+  settings dialog can read or change transmission parameters, and editing an
+  unrelated option no longer resets the current session speed.
+- [x] Repair Windows audio/thread error handling. Worker creation, waits, and
+  handles now have one checked path; WinMM validates event creation, device
+  opening, buffer preparation/playback, completion, and cleanup.
+- [x] Harden Core Audio initialization and playback synchronization. Every
+  initialization step is checked with partial cleanup, the configured sample
+  rate is honored, and the render callback now only copies/zeros samples and
+  publishes completion instead of taking locks or stopping its AudioUnit.
+- [x] Handle partial/interrupted OSS writes and propagate audio failures. OSS
+  now completes short writes and retries `EINTR`; PulseAudio, Core Audio, and
+  Windows report their playback/setup failures through checked return paths.
 
 ### Medium priority: training and option behavior
 
@@ -209,22 +208,20 @@ below are gaps those tests do not currently exercise.
 - [~] Make callsign and path editing round-trip. Config loading now preserves
   `/P`-style callsigns and paths containing spaces; the OSS device editor is
   still limited to 14 input characters.
-- [ ] Separate deterministic practice randomness from QRN sample generation.
-  `tonegen()` consumes the same global `rand()` sequence as item and pitch
-  selection, so changing noise/audio generation changes a seeded session's
-  future training sequence.
+- [x] Separate deterministic practice randomness from QRN sample generation.
+  QRN uses a private generator, so audio sample generation no longer consumes
+  the seeded item/pitch selection sequence.
 - [x] Exclude ineligible training sessions from comparable history summaries.
   Fixed-speed, unlimited, review, adaptive, and seeded sessions remain recorded
   but no longer depress average scores or distort score trends.
-- [ ] Use collision-resistant summary filenames. Two attempts by the same call
-  within one minute write the same `<call>-<minute>.txt` path, overwriting the
-  earlier summary; also check `fclose()` and Summary-directory creation errors.
-- [ ] Match toplist/history records by the fixed callsign field, not `strstr()`.
-  Current highlighting, “own scores,” and legacy statistics can match another
-  callsign that merely contains the user's call as a substring.
-- [ ] Make callbase counts use `size_t` end-to-end. `read_callbase()` narrows the
-  loaded count to `int` and then stores it in `unsigned long`, making its later
-  `INT_MAX` guard ineffective for very large databases.
+- [x] Use collision-resistant summary filenames. Summaries include seconds and
+  a securely exclusive `mkstemp()` suffix; incomplete writes/close failures are
+  reported and the partial new file is removed.
+- [x] Match toplist/history records by the fixed callsign field, not `strstr()`.
+  Highlighting, “own scores,” and legacy statistics now compare the exact
+  ten-byte space-padded field, with focused near-match tests.
+- [x] Make callbase counts use `size_t` end-to-end. The loaded count is no
+  longer narrowed through `int`/`unsigned long` before the session-size guard.
 - [x] Close history files even after read errors and reject accumulation or
   session-count overflow in very large or untrusted histories.
 
@@ -243,9 +240,9 @@ below are gaps those tests do not currently exercise.
 - [x] Make the callbase chooser bounded and cancellable, deduplicate results,
   close directory handles, use exact case-insensitive `.qcb` suffix matching,
   and avoid loading the selected database twice.
-- [ ] Check terminal dimensions and every `newwin()` result before drawing.
-  Resizing currently refreshes fixed 80x24 windows without relayout, while a
-  smaller terminal can yield null/failed window operations.
+- [x] Check terminal dimensions and every `newwin()` result before drawing.
+  The fixed layout now enforces its documented 80x24 minimum at startup and
+  after POSIX resize events, and reports window-allocation failures cleanly.
 
 ### Build, test, and documentation follow-up
 

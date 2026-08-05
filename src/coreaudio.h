@@ -30,7 +30,7 @@ extern "C"
 #endif
 
   void* open_dsp(char * dummy);
-  int write_audio(void* cookie, int* incomingBuffer, int incomingSize);
+  int write_audio(void* cookie, const int* incomingBuffer, int incomingSize);
   int close_audio(void* cookie);
 
 #ifdef __cplusplus
@@ -38,4 +38,3 @@ extern "C"
 #endif
 
 #endif
-

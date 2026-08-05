@@ -23,8 +23,11 @@ OSS specific functions and includes.
 #include <sys/soundcard.h>
 #include <sys/ioctl.h>
 #include <ncurses.h>
+#include <errno.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 extern long samplerate;
 
@@ -72,3 +75,34 @@ int open_dsp (char * device) {
 return fd;
 }
 
+int write_audio(int fd, const int *samples, int size) {
+	const unsigned char *next = (const unsigned char *)samples;
+	size_t remaining;
+
+	if (fd < 0 || samples == NULL || size < 0) {
+		errno = EINVAL;
+		return -1;
+	}
+	remaining = (size_t)size;
+	while (remaining != 0) {
+		ssize_t written = write(fd, next, remaining);
+
+		if (written > 0) {
+			next += (size_t)written;
+			remaining -= (size_t)written;
+			continue;
+		}
+		if (written < 0 && errno == EINTR) {
+			continue;
+		}
+		if (written == 0) {
+			errno = EIO;
+		}
+		return -1;
+	}
+	return 0;
+}
+
+int close_audio(int fd) {
+	return close(fd);
+}

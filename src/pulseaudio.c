@@ -72,7 +72,7 @@ void *open_dsp (char *dummy) {
 
 /* actually just puts samples into the buffer that is played at the end 
 (close_audio) */
-void write_audio (void *bla, int *in, int size) {
+int write_audio(void *bla, const int *in, int size) {
 	short int *new_buf;
 	size_t sample_count;
 	size_t required;
@@ -82,13 +82,13 @@ void write_audio (void *bla, int *in, int size) {
 	(void) bla;
 	if (in == NULL || size < 0 || buffer_failed) {
 		buffer_failed = 1;
-		return;
+		return -1;
 	}
 
 	sample_count = (size_t) size / sizeof(*in);
 	if (sample_count > SIZE_MAX - bufpos) {
 		buffer_failed = 1;
-		return;
+		return -1;
 	}
 	required = bufpos + sample_count;
 	if (required > bufsize) {
@@ -102,12 +102,12 @@ void write_audio (void *bla, int *in, int size) {
 		}
 		if (new_size > SIZE_MAX / sizeof(*buf)) {
 			buffer_failed = 1;
-			return;
+			return -1;
 		}
 		new_buf = realloc(buf, new_size * sizeof(*buf));
 		if (new_buf == NULL) {
 			buffer_failed = 1;
-			return;
+			return -1;
 		}
 		buf = new_buf;
 		bufsize = new_size;
@@ -116,20 +116,25 @@ void write_audio (void *bla, int *in, int size) {
 		buf[bufpos + i] = (short int) in[i];
 	}	
 	bufpos = required;
+	return 0;
 }
 
-void close_audio (void *s) {
+int close_audio(void *s) {
 	int e;
+	int result = 0;
 	if (s == NULL || buffer_failed) {
 		bufpos = 0;
 		buffer_failed = 0;
-		return;
+		return -1;
 	}
 	if (bufpos != 0 && pa_simple_write(s, buf, bufpos * sizeof(*buf), &e) < 0) {
 		fprintf(stderr, "pa_simple_write() failed: %s\n", pa_strerror(e));
+		result = -1;
 	}
 	else if (pa_simple_drain(s, &e) < 0) {
 		fprintf(stderr, "pa_simple_drain() failed: %s\n", pa_strerror(e));
+		result = -1;
 	}
 	bufpos = 0;
+	return result;
 }

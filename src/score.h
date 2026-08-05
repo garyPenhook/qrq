@@ -26,4 +26,7 @@ int qrq_score_attempt(struct qrq_score_state *state, const char *sent,
 /* Accumulates nonnegative item points within the fixed-width toplist range. */
 int qrq_score_accumulate(int total, int points);
 
+/* Matches the space-padded, ten-byte callsign field in a toplist record. */
+int qrq_toplist_callsign_matches(const char *record, const char *callsign);
+
 #endif

@@ -24,6 +24,11 @@ int main(void) {
 			QRQ_SESSION_SCORE_MAX);
 	assert(qrq_score_accumulate(-1, 5) == 0);
 	assert(qrq_score_accumulate(5, -1) == 5);
+	assert(qrq_toplist_callsign_matches("W4GNS     145549", "W4GNS"));
+	assert(!qrq_toplist_callsign_matches("NW4GNS    145549", "W4GNS"));
+	assert(!qrq_toplist_callsign_matches("W4GNS/P   145549", "W4GNS"));
+	assert(!qrq_toplist_callsign_matches("W4GNS     145549", "W4GN"));
+	assert(!qrq_toplist_callsign_matches("short", "W4GNS"));
 
 	assert(qrq_score_attempt(&session, "K1ABC", "K1ABC", 100, difference,
 			sizeof(difference)) == 1000);

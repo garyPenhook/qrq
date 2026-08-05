@@ -24,6 +24,26 @@ int qrq_score_accumulate(int total, int points) {
 	return total + points;
 }
 
+int qrq_toplist_callsign_matches(const char *record, const char *callsign) {
+	size_t callsign_length;
+	size_t i;
+
+	if (record == NULL || callsign == NULL || callsign[0] == '\0') {
+		return 0;
+	}
+	callsign_length = strlen(callsign);
+	if (callsign_length > 10 || strlen(record) < 10 ||
+			memcmp(record, callsign, callsign_length) != 0) {
+		return 0;
+	}
+	for (i = callsign_length; i < 10; ++i) {
+		if (record[i] != ' ') {
+			return 0;
+		}
+	}
+	return 1;
+}
+
 int qrq_score_attempt(struct qrq_score_state *state, const char *sent,
 		const char *input, int transmitted_speed, char *difference,
 		size_t difference_size) {

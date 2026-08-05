@@ -56,6 +56,7 @@ typedef int AUDIO_HANDLE;
 #endif
 #ifdef WIN32
 #include <windows.h>
+#include <process.h>
 #endif
 
 #ifdef WIN_THREADS
@@ -93,8 +94,6 @@ typedef void *AUDIO_HANDLE;
 
 #ifdef OSS
 #include "oss.h"
-#define write_audio(x, y, z) write(x, y, z)
-#define close_audio(x) close(x)
 typedef int AUDIO_HANDLE;
 #endif
 
@@ -151,11 +150,11 @@ static size_t displayed_errors=0;		/* errors placed in the current display */
 static int p=0;							/* position of cursor, relative to x */
 static int status=1;					/* 1= attempt, 2=config */
 static int mode=1;						/* 0 = overwrite, 1 = insert */
-static int j=0;							/* counter etc. */
 static int constanttone=0;              /* if 1 don't change the pitch */
 static int ctonefreq=800;               /* if constanttone=1 use this freq */
 static int volume=100;                  /* output gain as a percentage */
 static int qrnlevel=0;                  /* background noise as a percentage */
+static uint32_t qrn_state=0x6d2b79f5U;  /* separate from practice rand() state */
 static int minpitch=500;
 static int maxpitch=900;
 static int f6=0;						/* f6 = 1: allow unlimited repeats */
@@ -173,7 +172,7 @@ static int reviewmisses=0;
 static int accuracytarget=0;
 static unsigned int sessionseed=0;
 static int attemptvalid=1;				/* 1 = not using any "cheats" */
-static unsigned long int nrofcalls=0;	
+static size_t nrofcalls=0;
 static int toplist_own=0;               /* show only own call on toplist */
 static int call_maxlen = 0;				/* maximum length of a callsign/word from current database */
 #ifndef WIN32
@@ -205,12 +204,15 @@ static int save_config(void);
 static int tonegen(int freq, int length, int waveform);
 static MORSE_THREAD_RETURN morse(void *arg);
 static int add_to_buf(const void *data, size_t size);
+static double qrn_sample(void);
 static int readline(WINDOW *win, int y, int x, char *line, int capitals, int len); 
-static void thread_fail (int j);
+static WINDOW *create_window(int height, int width, int y, int x);
+static void start_morse_thread(const char *text);
+static void wait_morse_thread(void);
 static int check_toplist (void);
 static int find_files (void);
 static int statistics (void);
-static int read_callbase (void);
+static size_t read_callbase(void);
 static void find_callbases(void);
 static void select_callbase (void);
 static void help (void);
@@ -256,12 +258,81 @@ static int is_sending_complete(void) {
 
 
 #ifdef WIN_THREADS
-HANDLE cwthread;
+static HANDLE cwthread = NULL;
 #else
-pthread_t cwthread;				/* thread for CW output, to enable
+static pthread_t cwthread;		/* thread for CW output, to enable
 								   keyboard reading at the same time */
-pthread_attr_t cwattr;
 #endif
+static int cwthread_active = 0;
+
+static WINDOW *create_window(int height, int width, int y, int x) {
+	WINDOW *window = newwin(height, width, y, x);
+
+	if (window == NULL) {
+		endwin();
+		fprintf(stderr, "Unable to create the %dx%d terminal layout.\n",
+				COLS, LINES);
+		exit(EXIT_FAILURE);
+	}
+	return window;
+}
+
+static void start_morse_thread(const char *text) {
+	set_sending_complete(0);
+#ifdef WIN_THREADS
+	cwthread = (HANDLE)_beginthreadex(NULL, 0, morse, (void *)text, 0, NULL);
+	if (cwthread == NULL) {
+		int saved_errno = errno;
+		set_sending_complete(1);
+		endwin();
+		fprintf(stderr, "Unable to create CW thread: %s\n", strerror(saved_errno));
+		exit(EXIT_FAILURE);
+	}
+#else
+	{
+		int result = pthread_create(&cwthread, NULL, morse, (void *)text);
+		if (result != 0) {
+			set_sending_complete(1);
+			endwin();
+			fprintf(stderr, "Unable to create CW thread: %s\n", strerror(result));
+			exit(EXIT_FAILURE);
+		}
+	}
+#endif
+	cwthread_active = 1;
+}
+
+static void wait_morse_thread(void) {
+	if (!cwthread_active) {
+		return;
+	}
+#ifdef WIN_THREADS
+	{
+		DWORD wait_result = WaitForSingleObject(cwthread, INFINITE);
+		DWORD wait_error = wait_result == WAIT_FAILED ? GetLastError() : ERROR_SUCCESS;
+		BOOL close_result = CloseHandle(cwthread);
+
+		cwthread = NULL;
+		cwthread_active = 0;
+		if (wait_result != WAIT_OBJECT_0 || !close_result) {
+			endwin();
+			fprintf(stderr, "Unable to wait for CW thread (wait=%lu, error=%lu).\n",
+					(unsigned long)wait_result, (unsigned long)wait_error);
+			exit(EXIT_FAILURE);
+		}
+	}
+#else
+	{
+		int result = pthread_join(cwthread, NULL);
+		cwthread_active = 0;
+		if (result != 0) {
+			endwin();
+			fprintf(stderr, "Unable to join CW thread: %s\n", strerror(result));
+			exit(EXIT_FAILURE);
+		}
+	}
+#endif
+}
 
 char rcfilename[PATH_MAX]="";			/* filename and path to qrqrc */
 char tlfilename[PATH_MAX]="";			/* filename and path to toplist */
@@ -324,6 +395,12 @@ int main (int argc, char *argv[]) {
 	}
 	
 	(void) initscr();
+	if (LINES < 24 || COLS < 80) {
+		endwin();
+		fprintf(stderr, "QRQ requires a terminal of at least 80 columns by 24 rows "
+				"(current: %d by %d).\n", COLS, LINES);
+		return EXIT_FAILURE;
+	}
 	cbreak();
 	noecho();
 	curs_set(FALSE);
@@ -358,16 +435,10 @@ int main (int argc, char *argv[]) {
 		buffer[long_i]=0;
 	}
 	
-	/* random seed from time */
-	srand( (unsigned) time(NULL) ); 
+	/* Practice selection and simulated receiver noise use independent streams. */
+	qrn_state ^= (uint32_t)time(NULL);
+	srand((unsigned)time(NULL));
 
-#ifndef WIN_THREADS
-	/* Initialize cwthread. We have to wait for the cwthread to finish before
-	 * the next cw output can be made, this will be done with pthread_join */
-	pthread_attr_init(&cwattr);
-	pthread_attr_setdetachstate(&cwattr, PTHREAD_CREATE_JOINABLE);
-#endif
-	
 	/****** Reading configuration file ******/
 	printw("\nReading configuration file qrqrc \n");
 	read_config();
@@ -381,7 +452,7 @@ int main (int argc, char *argv[]) {
 	printw("\nReading callsign database... ");
 	nrofcalls = read_callbase();
 
-	printw("done. %ld calls read.\n\n", nrofcalls);
+	printw("done. %zu calls read.\n\n", nrofcalls);
 	printw("Press any key to continue...");
 
 	refresh();
@@ -390,12 +461,12 @@ int main (int argc, char *argv[]) {
 	erase();
 	refresh();
 
-	top_w = newwin(4, 60, 0, 0);
-	mid_w = newwin(17, 60, 4, 0);
-	conf_w = newwin(17, 60, 4, 0);
-	bot_w = newwin(3, 60, 21, 0);
-	inf_w = newwin(3, 60, 21, 0);
-	right_w = newwin(24, 20, 0, 60);
+	top_w = create_window(4, 60, 0, 0);
+	mid_w = create_window(17, 60, 4, 0);
+	conf_w = create_window(17, 60, 4, 0);
+	bot_w = create_window(3, 60, 21, 0);
+	inf_w = create_window(3, 60, 21, 0);
+	right_w = create_window(24, 20, 0, 60);
 
 	werase(top_w);
 	werase(mid_w);
@@ -408,12 +479,7 @@ int main (int argc, char *argv[]) {
 	keypad(mid_w, TRUE);
 	keypad(conf_w, TRUE);
 
-#ifdef WIN_THREADS
-	cwthread = (HANDLE) _beginthreadex( NULL, 0, morse,"QRQ",0, NULL);
-#else
-	/* no need to join here, this is the first possible time CW is sent */
-	pthread_create(&cwthread, NULL, & morse, (void *) "QRQ");
-#endif
+	start_morse_thread("QRQ");
 
 /* very outter loop */
 while (1) {	
@@ -495,15 +561,8 @@ while (status == 1) {
 	/* F6 -> play test CW */
 	else if (i == 6) {
 		freq = constanttone ? ctonefreq : 800;
-#ifdef WIN_THREADS
-		 WaitForSingleObject(cwthread,INFINITE);
-		 CloseHandle(cwthread);
-		 cwthread = (HANDLE) _beginthreadex( NULL, 0, morse,"VVVTEST",0, NULL);
-#else
-		pthread_join(cwthread, NULL);
-		j = pthread_create(&cwthread, NULL, &morse, (void *) "VVVTEST");	
-		thread_fail(j);
-#endif
+		wait_morse_thread();
+		start_morse_thread("VVVTEST");
 		break;
 	}
 	else if (i == 7) {
@@ -549,7 +608,7 @@ while (status == 1) {
 
 	/****** send a configured number of calls, ask for input, score ******/
     start_summary_file();
-	if (nrofcalls > (unsigned long)INT_MAX) {
+	if (nrofcalls > (size_t)INT_MAX) {
 		attempt_limit = INT_MAX;
 	}
 	else if (unlimitedattempt || sessionlength > (int)nrofcalls) {
@@ -561,14 +620,8 @@ while (status == 1) {
 	qrq_review_queue_clear(&review_queue);
 
     for (callnr=1; callnr <= attempt_limit; callnr++) {
-		/* Make sure to wait for the cwthread of the previous callsign, if
-		 * necessary. */
-#ifdef WIN_THREADS
-		WaitForSingleObject(cwthread,INFINITE);
-		CloseHandle(cwthread);
-#else
-		pthread_join(cwthread, NULL);
-#endif	
+		/* Make sure the previous transmission has completed. */
+		wait_morse_thread();
 		/* select an unused callsign from the calls-array */
 		if (reviewmisses && callnr % QRQ_REVIEW_INTERVAL == 0 &&
 				qrq_review_queue_take(&review_queue, &selected_index)) {
@@ -579,7 +632,7 @@ while (status == 1) {
 			i = (int)selected_index; /* Review entries may already be marked used. */
 		}
 		else {
-			i = (int)qrq_practice_choose((size_t)nrofcalls, call_used,
+			i = (int)qrq_practice_choose(nrofcalls, call_used,
 					call_mistakes, adaptiveselection, (uint32_t)rand());
 		}
 		if (i < 0) {
@@ -607,13 +660,7 @@ while (status == 1) {
 		/* starting the morse output in a separate process to make keyboard
 		 * input and echoing at the same time possible */
 		
-		set_sending_complete(0);
-#ifdef WIN_THREADS
-		cwthread = (HANDLE) _beginthreadex( NULL, 0, morse,calls[i],0, NULL);
-#else
-		j = pthread_create(&cwthread, NULL, morse, calls[i]);	
-		thread_fail(j);		
-#endif
+		start_morse_thread(calls[i]);
 		
 		f6pressed=0;
 
@@ -626,37 +673,16 @@ while (status == 1) {
 				}
 				f6pressed=1;
 				/* wait for old cwthread to finish, then send call again */
-			
-#ifdef WIN_THREADS
-			WaitForSingleObject(cwthread,INFINITE);
-			CloseHandle(cwthread);
-			set_sending_complete(0);
-			cwthread = (HANDLE) _beginthreadex( NULL, 0, morse,calls[i],0, NULL);
-#else
-			pthread_join(cwthread, NULL);
-			set_sending_complete(0);
-			j = pthread_create(&cwthread, NULL, &morse, calls[i]);	
-			thread_fail(j);
-#endif	
+				wait_morse_thread();
+				start_morse_thread(calls[i]);
 					break; /* 6*/
 				case 7:		/* repeat _previous_ call */
 					if (callnr > 1) {
 						k = freq;
 						freq = previousfreq;
-#ifdef WIN_THREADS
-			WaitForSingleObject(cwthread,INFINITE);
-			CloseHandle(cwthread);
-			set_sending_complete(0);
-			cwthread = (HANDLE) _beginthreadex( NULL, 0, morse,previouscall,0, NULL);
-			WaitForSingleObject(cwthread,INFINITE);
-			CloseHandle(cwthread);
-#else
-			pthread_join(cwthread, NULL);
-			set_sending_complete(0);
-			j = pthread_create(&cwthread, NULL, &morse, previouscall);	
-			thread_fail(j);
-			pthread_join(cwthread, NULL);
-#endif	
+						wait_morse_thread();
+						start_morse_thread(previouscall);
+						wait_morse_thread();
 						/* NB: We must wait for the CW thread before
 						 * we set the freq back -- this blocks keyboard
 						 * input, but in this case it shouldn't matter */
@@ -684,7 +710,7 @@ while (status == 1) {
 		completedcalls++;
 		update_score();
 		made_error = strcmp(tmp, "-") != 0;
-		if (qrq_practice_record_result((size_t)nrofcalls, call_used,
+		if (qrq_practice_record_result(nrofcalls, call_used,
 				call_mistakes, (size_t)i, !made_error, adaptiveselection) != 0) {
 			fprintf(stderr, "Unable to record practice result.\n");
 			break;
@@ -718,15 +744,8 @@ while (status == 1) {
 	/* attempt is over, send AR */
 	callnr = 0;
 	
-#ifdef WIN_THREADS
-		 WaitForSingleObject(cwthread,INFINITE);
-		 CloseHandle(cwthread);
-		 cwthread = (HANDLE) _beginthreadex( NULL, 0, morse,"+",0, NULL);
-#else
-		pthread_join(cwthread, NULL);
-		j = pthread_create(&cwthread, NULL, &morse, (void *) "+");	
-		thread_fail(j);
-#endif
+	wait_morse_thread();
+	start_morse_thread("+");
 	
 	add_to_toplist(mycall, toplist_score, maxspeed);
 	
@@ -770,6 +789,9 @@ void parameter_dialog (void) {
 int j = 0;
 
 
+	/* Configuration values are read by the audio worker.  Join it before
+	 * displaying or changing those values, and after each F6 sample. */
+	wait_morse_thread();
 update_parameter_dialog();
 
 while ((j = getch()) != 0) {
@@ -927,15 +949,8 @@ while ((j = getch()) != 0) {
 			break;
 		case KEY_F(6):
 			freq = constanttone ? ctonefreq : 800;
-#ifdef WIN_THREADS
-		 WaitForSingleObject(cwthread,INFINITE);
-		 CloseHandle(cwthread);
-		 cwthread = (HANDLE) _beginthreadex( NULL, 0, morse,"TESTING",0, NULL);
-#else
-		pthread_join(cwthread, NULL);
-		j = pthread_create(&cwthread, NULL, &morse, (void *) "TESTING");	
-		thread_fail(j);
-#endif
+			wait_morse_thread();
+			start_morse_thread("TESTING");
 			break;
 		case KEY_F(10):
 		case KEY_F(3):
@@ -950,7 +965,11 @@ while ((j = getch()) != 0) {
 			return;
 	}
 
-	speed = initialspeed;
+	/* Initial speed is a next-session setting; do not reset an active
+	 * session's adaptive speed merely because another option changed. */
+	if (!callnr) {
+		speed = initialspeed;
+	}
 
 	attemptvalid = 1;
 	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses || sessionseed != 0) {
@@ -958,6 +977,7 @@ while ((j = getch()) != 0) {
 	}
 
 	update_parameter_dialog();
+	wait_morse_thread();
 
 } /* while 1 (return only by F3/F10) */
 
@@ -1017,7 +1037,7 @@ void update_parameter_dialog (void) {
 	mvwprintw(conf_w,11,2, "Session calls*:        %-10s [ / ] or u", session_value);
 	if (!callnr) {
 		mvwprintw(conf_w,12,2, "Callsign database:     %-15s"
-					"      d (%ld)", basename(cbfilename),nrofcalls);
+					"      d (%zu)", basename(cbfilename),nrofcalls);
 	}
 	mvwprintw(conf_w,13,2, "Adaptive*: %-3s Review*: %-3s Goal: %-3d%% a/r/g",
 			adaptiveselection ? "yes" : "no", reviewmisses ? "yes" : "no",
@@ -1101,6 +1121,12 @@ static int readline(WINDOW *win, int y, int x, char *line, int capitals, int len
 	
 	while (1) {
 		c = wgetch(win);
+#ifndef WIN32
+		if (resize_pending) {
+			apply_terminal_resize();
+			continue;
+		}
+#endif
 		if (c == '\n' && is_sending_complete())
 			break;
 		line_len = strlen(line);
@@ -1195,20 +1221,9 @@ static int readline(WINDOW *win, int y, int x, char *line, int capitals, int len
 					" highscore to http://fkurz.net/ham/qrqtop.php\n");
 			/* make sure that no more output is running, then send 73 & quit */
 			speed = 200; freq = 800;
-#ifdef WIN_THREADS
-		 WaitForSingleObject(cwthread,INFINITE);
-		 CloseHandle(cwthread);
-		 cwthread = (HANDLE) _beginthreadex( NULL, 0, morse,"73",0, NULL);
-		 WaitForSingleObject(cwthread,INFINITE);
-		 CloseHandle(cwthread);
-#else
-		pthread_join(cwthread, NULL);
-		j = pthread_create(&cwthread, NULL, &morse, (void *) "73");	
-		thread_fail(j);
-			/* make sure the cw thread doesn't die with the main thread */
-			/* Exit the whole main thread */
-			pthread_join(cwthread, NULL);
-#endif
+			wait_morse_thread();
+			start_morse_thread("73");
+			wait_morse_thread();
 			exit(0);
 		}
 
@@ -1240,13 +1255,13 @@ static int display_toplist (void) {
 		if (fgets(tmp, 34, fh) != NULL) {
 			tmp[17]='\0';
 			if (toplist_own) {
-				if (strstr(tmp, mycall)) {   /* only show own call */
+				if (qrq_toplist_callsign_matches(tmp, mycall)) {
 					mvwaddstr(right_w,i+2, 2, tmp);
 					i++;
 				}
 			}
 			else {
-				if (strstr(tmp, mycall)) {		/* highlight own call */
+				if (qrq_toplist_callsign_matches(tmp, mycall)) {
 					wattron(right_w, A_BOLD);
 				}
 				mvwaddstr(right_w,i+2, 2, tmp);
@@ -1392,6 +1407,8 @@ static void close_summary_file (void) {
     size_t path_len;
     size_t call_len;
     size_t time_len;
+	int summary_fd;
+	int write_failed;
 
     t = time(NULL);
     tmp = localtime(&t);
@@ -1399,7 +1416,7 @@ static void close_summary_file (void) {
         return;
     }
 
-    if (strftime(time_fmt, sizeof(time_fmt), "%Y%m%d_%H%M", tmp) == 0) {
+    if (strftime(time_fmt, sizeof(time_fmt), "%Y%m%d_%H%M%S", tmp) == 0) {
         return;
     }
 
@@ -1413,28 +1430,46 @@ static void close_summary_file (void) {
 	path_len = strlen(sumfilepath);
 	call_len = strlen(mycall);
 	time_len = strlen(time_fmt);
-	if (path_len > SIZE_MAX - call_len - time_len - 7) {
+	if (path_len > SIZE_MAX - call_len - time_len - 14) {
 		fprintf(stderr, "Summary filename is too long.\n");
 		return;
 	}
-	filename_len = path_len + call_len + time_len + 7;
+	filename_len = path_len + call_len + time_len + 14;
 	filename = malloc(filename_len);
 	if (filename == NULL) {
 		fprintf(stderr, "Out of memory while creating summary filename.\n");
 		return;
 	}
-	(void)snprintf(filename, filename_len, "%s/%s-%s.txt", sumfilepath, mycall, time_fmt);
+	(void)snprintf(filename, filename_len, "%s/%s-%s.txt.XXXXXX", sumfilepath,
+			mycall, time_fmt);
 
-	if ((fh = fopen(filename, "w")) == NULL) {
+	summary_fd = mkstemp(filename);
+	if (summary_fd == -1) {
 		printf("Unable to open summary file (%s)!\r\n", filename);
 		free(filename);
 		return;
 	}
-
-	if (fwrite(summary, 1, s_pos, fh) != s_pos) {
-		fprintf(stderr, "Unable to write summary file (%s)!\n", filename);
+	fh = fdopen(summary_fd, "wb");
+	if (fh == NULL) {
+		int saved_errno = errno;
+		close(summary_fd);
+		unlink(filename);
+		fprintf(stderr, "Unable to open summary stream (%s): %s\n", filename,
+				strerror(saved_errno));
+		free(filename);
+		return;
 	}
-	fclose(fh);
+
+	write_failed = fwrite(summary, 1, s_pos, fh) != s_pos;
+	if (fclose(fh) != 0) {
+		write_failed = 1;
+	}
+	if (write_failed) {
+		fprintf(stderr, "Unable to complete summary file (%s)!\n", filename);
+		unlink(filename);
+		free(filename);
+		return;
+	}
 	
     for (int i = 12; i <= 15; i++) {
         mvwprintw(mid_w,i,2, "                                                         ");
@@ -1525,6 +1560,12 @@ static void apply_terminal_resize(void) {
 	}
 	resize_pending = 0;
 	resizeterm(0, 0);
+	if (LINES < 24 || COLS < 80) {
+		endwin();
+		fprintf(stderr, "QRQ requires a terminal of at least 80 columns by 24 rows "
+				"(current: %d by %d).\n", COLS, LINES);
+		exit(EXIT_FAILURE);
+	}
 	clearok(stdscr, TRUE);
 	if (top_w != NULL) touchwin(top_w);
 	if (mid_w != NULL) touchwin(mid_w);
@@ -1932,16 +1973,19 @@ static int read_config(void) {
 	return 0;
 }
 static MORSE_THREAD_RETURN morse(void *arg) {
-	char * text = arg;
+	const char *text = arg;
 	int i,j;
 	int c, fulldotlen, dotlen, dashlen, charspeed, farnsworth, fwdotlen;
 	const char *code;
 
 #if WIN32 /* WinMM simple support by Lukasz Komsta, SP8QED */
-	HWAVEOUT		h;
-	WAVEFORMATEX	wf;
-	WAVEHDR			wh;
-	HANDLE			d;
+	HWAVEOUT h = NULL;
+	WAVEFORMATEX wf = {0};
+	WAVEHDR wh = {0};
+	HANDLE d = NULL;
+	MMRESULT winmm_result;
+	int header_prepared = 0;
+	int wave_opened = 0;
 
 	wf.wFormatTag = WAVE_FORMAT_PCM;
 	wf.nChannels = 1;
@@ -1950,8 +1994,20 @@ static MORSE_THREAD_RETURN morse(void *arg) {
 	wf.nBlockAlign = wf.nChannels * wf.wBitsPerSample / 8;
 	wf.nAvgBytesPerSec = wf.nSamplesPerSec * wf.nBlockAlign;
 	wf.cbSize = 0;
-	d = CreateEvent(0, FALSE, FALSE, 0);
-	if(waveOutOpen(&h, 0, &wf, (DWORD) d, 0, CALLBACK_EVENT) != MMSYSERR_NOERROR);
+	d = CreateEvent(NULL, FALSE, FALSE, NULL);
+	if (d == NULL) {
+		fprintf(stderr, "Unable to create WinMM playback event (error %lu).\n",
+				(unsigned long)GetLastError());
+		goto audio_error;
+	}
+	winmm_result = waveOutOpen(&h, WAVE_MAPPER, &wf, (DWORD_PTR)d, 0,
+			CALLBACK_EVENT);
+	if (winmm_result != MMSYSERR_NOERROR) {
+		fprintf(stderr, "Unable to open WinMM output (error %u).\n",
+				(unsigned int)winmm_result);
+		goto audio_error;
+	}
+	wave_opened = 1;
 
 #else
 	/* opening the DSP device */
@@ -2087,26 +2143,88 @@ static MORSE_THREAD_RETURN morse(void *arg) {
 #endif
 
 #if WIN32
+	if (full_bufpos < 2 || full_bufpos - 2 > UINT32_MAX) {
+		fprintf(stderr, "Generated audio is too large for WinMM.\n");
+		goto audio_error;
+	}
 	wh.lpData = (char*) full_buf;
 	wh.dwBufferLength = (DWORD) (full_bufpos - 2);
 	wh.dwFlags = 0;
 	wh.dwLoops = 0;
-	waveOutPrepareHeader(h, &wh, sizeof(wh));
-	ResetEvent(d);
-	waveOutWrite(h, &wh, sizeof(wh));
-	if(WaitForSingleObject(d, INFINITE) != WAIT_OBJECT_0);
-	waveOutUnprepareHeader(h, &wh, sizeof(wh));
-	waveOutClose(h);
-	CloseHandle(d);
+	winmm_result = waveOutPrepareHeader(h, &wh, sizeof(wh));
+	if (winmm_result != MMSYSERR_NOERROR) {
+		fprintf(stderr, "Unable to prepare WinMM audio (error %u).\n",
+				(unsigned int)winmm_result);
+		goto audio_error;
+	}
+	header_prepared = 1;
+	if (!ResetEvent(d)) {
+		fprintf(stderr, "Unable to reset WinMM playback event (error %lu).\n",
+				(unsigned long)GetLastError());
+		goto audio_error;
+	}
+	winmm_result = waveOutWrite(h, &wh, sizeof(wh));
+	if (winmm_result != MMSYSERR_NOERROR) {
+		fprintf(stderr, "Unable to start WinMM playback (error %u).\n",
+				(unsigned int)winmm_result);
+		goto audio_error;
+	}
+	if (WaitForSingleObject(d, INFINITE) != WAIT_OBJECT_0) {
+		fprintf(stderr, "Unable to wait for WinMM playback (error %lu).\n",
+				(unsigned long)GetLastError());
+		goto audio_error;
+	}
+	winmm_result = waveOutUnprepareHeader(h, &wh, sizeof(wh));
+	if (winmm_result != MMSYSERR_NOERROR) {
+		fprintf(stderr, "Unable to release WinMM audio (error %u).\n",
+				(unsigned int)winmm_result);
+		goto audio_error;
+	}
+	header_prepared = 0;
+	if (waveOutClose(h) != MMSYSERR_NOERROR) {
+		fprintf(stderr, "Unable to close WinMM output.\n");
+		goto audio_error;
+	}
+	h = NULL;
+	wave_opened = 0;
+	if (!CloseHandle(d)) {
+		fprintf(stderr, "Unable to close WinMM playback event (error %lu).\n",
+				(unsigned long)GetLastError());
+		goto audio_error;
+	}
+	d = NULL;
 #else
-	write_audio(dsp_fd, full_buf, (int) full_bufpos);
-	close_audio(dsp_fd);
+	{
+		int write_result = write_audio(dsp_fd, full_buf, (int)full_bufpos);
+		int close_result = close_audio(dsp_fd);
+
+		if (write_result != 0 || close_result != 0) {
+#ifdef OSS
+			fprintf(stderr, "Audio playback failed: %s\n", strerror(errno));
+#else
+			fprintf(stderr, "Audio playback failed.\n");
+#endif
+			set_sending_complete(1);
+			return MORSE_THREAD_RESULT;
+		}
+	}
 #endif
 	set_sending_complete(1);
 	return MORSE_THREAD_RESULT;
 
 audio_error:
-#ifdef OSS
+#if WIN32
+	if (wave_opened) {
+		(void)waveOutReset(h);
+		if (header_prepared) {
+			(void)waveOutUnprepareHeader(h, &wh, sizeof(wh));
+		}
+		(void)waveOutClose(h);
+	}
+	if (d != NULL) {
+		(void)CloseHandle(d);
+	}
+#elif defined(OSS) || defined(CA)
 	(void) close_audio(dsp_fd);
 #endif
 	set_sending_complete(1);
@@ -2148,6 +2266,13 @@ static int add_to_buf(const void *data, size_t size)
 	return 0;
 }
 
+static double qrn_sample(void) {
+	/* LCG output is sufficient for audible noise and deliberately does not
+	 * consume rand(), which drives reproducible practice selection. */
+	qrn_state = qrn_state * 1664525U + 1013904223U;
+	return ((double)qrn_state / (double)UINT32_MAX) * 2.0 - 1.0;
+}
+
 /* tonegen generates a sinus tone of frequency 'freq' and length 'len' (samples)
  * based on 'samplerate', 'edge' (rise/falltime) */
 
@@ -2182,8 +2307,7 @@ static int tonegen (int freq, int len, int waveform) {
 		}
 		
 		if (qrnlevel != 0) {
-			val += (((double)rand() / (double)RAND_MAX) * 2.0 - 1.0) *
-					(qrnlevel / 100.0);
+			val += qrn_sample() * (qrnlevel / 100.0);
 		}
 		out = (int) (val * 32500.0 * volume / 100.0);
 		if (out > 32500) out = 32500;
@@ -2384,14 +2508,6 @@ cleanup:
 	return result;
 }
 		
-static void thread_fail (int j) {
-	if (j) {
-		endwin();
-		perror("Error: Unable to create cwthread!\n");
-		exit(EXIT_FAILURE);
-	}
-}
-
 /* Add timestamps to toplist file if not there yet */
 static int check_toplist (void) {
 	char first_line[35] = "";
@@ -2757,7 +2873,7 @@ static int statistics (void) {
 
 		char line[80]="";
 
-		int time = 0;
+		long timestamp = 0;
 		int score = 0;
 		int count= 0;
 
@@ -2824,10 +2940,12 @@ static int statistics (void) {
 					"plot \"-\" using 1:2 title \"\"\n", mycall);
 
 		while ((feof(fh) == 0) && (fgets(line, 80, fh) != NULL)) {
-				if ((strstr(line, mycall) != NULL)) {
-					count++;
-					sscanf(line, "%*s %d %*d %d", &score, &time);
-					fprintf(fh2, "%d %d\n", time, score);
+				if (qrq_toplist_callsign_matches(line, mycall)) {
+					if (sscanf(line + 10, "%6d %*3d %10ld", &score,
+							&timestamp) == 2) {
+						count++;
+						fprintf(fh2, "%ld %d\n", timestamp, score);
+					}
 				}
 		}
 
@@ -2866,7 +2984,7 @@ static void free_calls(void) {
 	calls_allocated = 0;
 }
 
-static int read_callbase(void) {
+static size_t read_callbase(void) {
 	const struct qrq_callbase_filter filter = {
 		.minimum_length = (size_t)mincalllength,
 		.maximum_length = (size_t)maxcalllength,
@@ -2894,7 +3012,7 @@ static int read_callbase(void) {
 		exit(EXIT_FAILURE);
 	}
 	call_maxlen = (int)loaded_callbase.max_length;
-	return (int)loaded_callbase.count;
+	return loaded_callbase.count;
 }
 
 static int has_qcb_suffix(const char *name) {
