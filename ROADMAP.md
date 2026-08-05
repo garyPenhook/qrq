@@ -60,7 +60,9 @@ practice.
 
 ## Phase 5: Advanced practice and UX
 
-- Configurable pitch range, volume, spacing, and independent rise/fall times.
+- [~] Configurable pitch range, volume, spacing, and independent rise/fall times.
+  Persisted volume and common rise/fall time are available; remaining controls
+  need dedicated audio design.
 - Optional QRM, QRN, fading, and pileup simulation.
 - [~] Terminal resize handling, configurable keys, and accessible color themes.
   POSIX terminals now refresh ncurses state after SIGWINCH; configurable keys

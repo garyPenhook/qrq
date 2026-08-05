@@ -143,6 +143,7 @@ static int mode=1;						/* 0 = overwrite, 1 = insert */
 static int j=0;							/* counter etc. */
 static int constanttone=0;              /* if 1 don't change the pitch */
 static int ctonefreq=800;               /* if constanttone=1 use this freq */
+static int volume=100;                  /* output gain as a percentage */
 static int f6=0;						/* f6 = 1: allow unlimited repeats */
 static int fixspeed=0;					/* keep speed fixed, regardless of err*/
 static int unlimitedattempt=0;			/* attempt with all calls  of the DB */
@@ -1801,6 +1802,17 @@ static int read_config (void) {
 				printw("  line  %2d: ctonefreq: %d\n", line, ctonefreq);
 			}
 		}
+		else if (tmp == strstr(tmp, "volume=")) {
+			while (isdigit((unsigned char)(tmp[i] = tmp[7 + i]))) {
+				i++;
+			}
+			tmp[i] = '\0';
+			k = atoi(tmp);
+			if (k >= 0 && k <= 100) {
+				volume = k;
+				printw("  line  %2d: volume: %d%%\n", line, volume);
+			}
+		}
 		else if (tmp == strstr(tmp, "f6=")) {
 			f6=0;
 			if (tmp[3] == '1') {
@@ -2198,7 +2210,7 @@ static int tonegen (int freq, int len, int waveform) {
 				val *= pow(sin(2*PI*(x-(len-ed)+ed)/(4*ed)),2); 
 		}
 		
-		out = (int) (val * 32500.0);
+		out = (int) (val * 32500.0 * volume / 100.0);
 #ifndef PA
 		stereo_out = ((uint32_t) (uint16_t) out << 16) | (uint16_t) out;
 		if (add_to_buf(&stereo_out, sizeof(stereo_out)) != 0) {
@@ -2227,7 +2239,7 @@ static int save_config (void) {
 		"speedupstep", "speeddownstep", "sessionlength", "mincalllength",
 		"maxcalllength", "stoponerror", "adaptiveselection", "reviewmisses",
 		"accuracytarget", "callprefixes", "digitmode", "portablemode",
-		"allowedchars", "sessionseed"
+		"allowedchars", "sessionseed", "volume"
 	};
 	FILE *fh = NULL;
 	char tmp[PATH_MAX + 80];
@@ -2309,7 +2321,8 @@ static int save_config (void) {
 			case 23: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], digitmode); break;
 			case 24: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], portablemode); break;
 			case 25: written = snprintf(tmp, sizeof(tmp), "%s=%s ", confopts[i], allowedchars); break;
-			default: written = snprintf(tmp, sizeof(tmp), "%s=%u ", confopts[i], sessionseed); break;
+			case 26: written = snprintf(tmp, sizeof(tmp), "%s=%u ", confopts[i], sessionseed); break;
+			default: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], volume); break;
 		}
 		if (written < 0 || (size_t)written >= sizeof(tmp)) {
 			fprintf(stderr, "Unable to format config option '%s'.\n", confopts[i]);

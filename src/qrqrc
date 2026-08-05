@@ -57,6 +57,9 @@ constanttone=0
 # values: 100 - 1600
 ctonefreq=600     
 
+# output volume as a percentage (0..100)
+volume=100
+
 # allow unlimited usage of F6
 # values: 0 = no, 1 = yes
 f6=0   
