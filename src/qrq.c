@@ -89,10 +89,13 @@ typedef void *AUDIO_HANDLE;
 #endif
 
 #include "score.h"
+#include "callbase.h"
 
 /* callsign array will be dynamically allocated */
 static char **calls = NULL;
 static size_t calls_allocated = 0;
+static unsigned char *call_used = NULL;
+static struct qrq_callbase loaded_callbase = {0};
 
 static const char *codetable[] = {
 ".-", "-...", "-.-.", "-..", ".", "..-.", "--.", "....", "..",".---",
@@ -133,6 +136,8 @@ static int f6=0;						/* f6 = 1: allow unlimited repeats */
 static int fixspeed=0;					/* keep speed fixed, regardless of err*/
 static int unlimitedattempt=0;			/* attempt with all calls  of the DB */
 static int sessionlength=50;				/* calls per standard practice session */
+static int mincalllength=1;
+static int maxcalllength=CALL_MAX;
 static int attemptvalid=1;				/* 1 = not using any "cheats" */
 static unsigned long int nrofcalls=0;	
 static int toplist_own=0;               /* show only own call on toplist */
@@ -502,7 +507,7 @@ while (status == 1) {
 		/* select an unused callsign from the calls-array */
 		do {
 			i = (int) ((float) nrofcalls*rand()/(RAND_MAX+1.0));
-		} while (calls[i] == NULL);
+		} while (call_used[i] != 0);
 
 		/* output frequency handling a) random b) fixed */
 		if ( constanttone == 0 ) {
@@ -606,7 +611,7 @@ while (status == 1) {
 		input[0]='\0';
 		strncpy(previouscall, calls[i], CALL_MAX);
 		previousfreq = freq;
-		calls[i] = NULL;
+		call_used[i] = 1;
 	}
 
     close_summary_file();
@@ -1719,6 +1724,28 @@ static int read_config (void) {
 						line, tmp, sessionlength);
 			}
         }
+		else if (tmp == strstr(tmp, "mincalllength=")) {
+			while (isdigit((unsigned char)(tmp[i] = tmp[14+i]))) {
+				i++;
+			}
+			tmp[i] = '\0';
+			k = atoi(tmp);
+			if (k >= 1 && k <= maxcalllength) {
+				mincalllength = k;
+				printw("  line  %2d: minimum call length: %d\n", line, mincalllength);
+			}
+        }
+		else if (tmp == strstr(tmp, "maxcalllength=")) {
+			while (isdigit((unsigned char)(tmp[i] = tmp[14+i]))) {
+				i++;
+			}
+			tmp[i] = '\0';
+			k = atoi(tmp);
+			if (k >= mincalllength && k <= CALL_MAX) {
+				maxcalllength = k;
+				printw("  line  %2d: maximum call length: %d\n", line, maxcalllength);
+			}
+        }
 		else if (tmp == strstr(tmp,"callbase=")) {
 			while (isgraph(tmp[i] = tmp[9+i])) {
 				i++;
@@ -2012,7 +2039,8 @@ static int save_config (void) {
 		"callsign", "callbase", "dspdevice", "initialspeed",
 		"mincharspeed", "waveform", "constanttone", "ctonefreq",
 		"fixspeed", "unlimitedattempt", "f6", "risetime", "speedstep",
-		"speedupstep", "speeddownstep", "sessionlength", "stoponerror"
+		"speedupstep", "speeddownstep", "sessionlength", "mincalllength",
+		"maxcalllength", "stoponerror"
 	};
 	FILE *fh = NULL;
 	char tmp[PATH_MAX + 80];
@@ -2084,6 +2112,8 @@ static int save_config (void) {
 			case 13: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], speedupstep); break;
 			case 14: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], speeddownstep); break;
 			case 15: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], sessionlength); break;
+			case 16: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], mincalllength); break;
+			case 17: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], maxcalllength); break;
 			default: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], stoponerror); break;
 		}
 		if (written < 0 || (size_t)written >= sizeof(tmp)) {
@@ -2595,95 +2625,33 @@ static int statistics (void) {
 
 
 static void free_calls(void) {
-	size_t i;
-
-	for (i = 0; i < calls_allocated; i++) {
-		free(calls[i]);
-	}
-	free(calls);
-	calls = NULL;
+	free(call_used);
+	call_used = NULL;
+	qrq_callbase_free(&loaded_callbase);
+	calls = loaded_callbase.items;
 	calls_allocated = 0;
 }
 
-int read_callbase (void) {
-	FILE *fh;
-	int c,i;
-	char tmp[CALL_MAX + 2] = "";
-	int nr=0;
-
-	if ((fh = fopen(cbfilename, "r")) == NULL) {
-		endwin();
-		fprintf(stderr, "Error: Couldn't read callsign database ('%s')!\n",
-						cbfilename);
-		exit(EXIT_FAILURE);
-	}
-
-	/* count the lines/calls and lengths */
-	call_maxlen = 0;
-	i=0;
-	while ((c = getc(fh)) != EOF) {
-		i++;
-		if (c == '\n') {
-			nr++;
-			call_maxlen = (i > call_maxlen) ? i : call_maxlen;
-			i = 0;
-		}
-	}
-	call_maxlen--; /* remove \n */
-
-	if (!nr) {
-		endwin();
-		printf("\nError: Callsign database empty, no calls read. Exiting.\n");
-		exit(EXIT_FAILURE);
-	}
-
-	if (call_maxlen > CALL_MAX) {
-		endwin();
-		printf("\nError: Callsign database contains a line with %d letters, which is longer than CALL_MAX (%d) . Exiting.\n", call_maxlen, CALL_MAX);
-		exit(EXIT_FAILURE);
-	}
-
-	/* Allocate a zero-initialized table so cleanup is safe after a partial
-	 * allocation failure. */
+static int read_callbase(void) {
 	free_calls();
-	calls = calloc((size_t) nr, sizeof(*calls));
-	calls_allocated = (size_t) nr;
-	if (calls == NULL) {
-		fprintf(stderr, "Error: Couldn't allocate %d bytes!\n", 
-						(int) sizeof(*calls)*nr);
+	if (qrq_callbase_load(cbfilename, (size_t)mincalllength,
+			(size_t)maxcalllength, &loaded_callbase) != 0) {
+		endwin();
+		fprintf(stderr, "Error: Couldn't load callsign database '%s': %s\n",
+				cbfilename, strerror(errno));
 		exit(EXIT_FAILURE);
 	}
-	
-	/* Allocate each element of the array with size maxlen */
-	for (c=0; c < nr; c++) {
-		if ((calls[c] = (char *) malloc ((call_maxlen + 2) * sizeof(char))) == NULL) {
-			fprintf(stderr, "Error: Couldn't allocate %d bytes!\n", call_maxlen + 2);
-			free_calls();
-			exit(EXIT_FAILURE);
-		}
+	calls = loaded_callbase.items;
+	calls_allocated = loaded_callbase.count;
+	call_used = calloc(calls_allocated, sizeof(*call_used));
+	if (call_used == NULL) {
+		free_calls();
+		endwin();
+		fprintf(stderr, "Error: Couldn't allocate call usage state.\n");
+		exit(EXIT_FAILURE);
 	}
-
-	rewind(fh);
-	
-	nr=0;
-	while (fgets(tmp,call_maxlen+2,fh) != NULL) {
-		for (i = 0; i < (int)strlen(tmp); i++) {
-				tmp[i] = toupper(tmp[i]);
-		}
-		tmp[i-1]='\0';				/* remove newline */
-		if (tmp[i-2] == '\r') {		/* also for DOS files */
-			tmp[i-2] = '\0';
-		}
-		strcpy(calls[nr],tmp);
-		nr++;
-		if (nr == c) 			/* may happen if call file corrupted */
-				break;
-	}
-	fclose(fh);
-
-
-	return nr;
-
+	call_maxlen = (int)loaded_callbase.max_length;
+	return (int)loaded_callbase.count;
 }
 
 void find_callbases (void) {

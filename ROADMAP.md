@@ -39,7 +39,8 @@ practice.
 - [x] Independent speed-up and speed-down steps.
 - Accuracy-target and fixed-speed session policies.
 - Missed-item review queue and error-weighted adaptive selection.
-- Filters for call length, prefixes, digits, portable suffixes, and characters.
+- [~] Filters for call length, prefixes, digits, portable suffixes, and
+  characters. Length filtering is available through `qrqrc`.
 - Seeded sessions for repeatable challenges.
 
 ## Phase 4: Feedback and statistics

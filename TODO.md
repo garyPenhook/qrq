@@ -97,15 +97,18 @@ The OSS and PulseAudio backends both build locally.
 2. [~] Extract pure scoring, Morse timing, callbase, and configuration modules.
    Scoring now lives in `src/score.c`; timing, callbase, and config remain.
 3. [~] Add unit tests and sanitizer targets. Scoring tests run in CI alongside
-   the existing sanitizer smoke test.
+   the existing sanitizer smoke test; callbase parsing and filters are covered
+   too.
 4. [x] Add GitHub Actions for GCC/Clang and OSS/PulseAudio builds, plus
    cppcheck and an ASan/UBSan smoke test. Add MinGW coverage next.
 5. [x] Add independent up/down speed steps; legacy `speedstep` configs remain
    compatible, while `speedupstep` and `speeddownstep` persist separately.
 6. Add missed-item review and adaptive selection.
-7. Continue with statistics, terminal resize support, packaging, and advanced
+7. [~] Add filters for call length, prefixes, digits, portable suffixes, and
+   characters. Length filtering is available through `qrqrc`.
+8. Continue with statistics, terminal resize support, packaging, and advanced
    audio modes from `ROADMAP.md`.
-8. [x] Add a warning-free strict C17 syntax gate with `-Werror`.
+9. [x] Add a warning-free strict C17 syntax gate with `-Werror`.
 
 ## Useful inspection commands
 

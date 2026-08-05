@@ -15,6 +15,9 @@ speeddownstep=10
 # number of calls per session; 50 is the standard, comparable high-score mode
 # (use the F5 configuration screen to change it in steps of five)
 sessionlength=50
+# limit practice to entries within this character range (1..28)
+mincalllength=1
+maxcalllength=28
 dspdevice=/dev/dsp    # your DSP device, usually /dev/dsp (for OSS only)
 
 # risetime and falltime for shaping the CW sigs (in milliseconds). recommended

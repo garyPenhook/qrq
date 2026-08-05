@@ -4,3 +4,5 @@ src/README
 releases
 src/qrq
 src/test_score
+src/test_callbase
+src/test_callbase.qcb
