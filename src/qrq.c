@@ -88,6 +88,8 @@ typedef int AUDIO_HANDLE;
 typedef void *AUDIO_HANDLE;
 #endif
 
+#include "score.h"
+
 /* callsign array will be dynamically allocated */
 static char **calls = NULL;
 static size_t calls_allocated = 0;
@@ -1136,44 +1138,20 @@ static int display_toplist (void) {
  * in training modes (unlimited attempts, f6, fixed speed), no points.
  * */
 static int calc_score (char * realcall, char * input, int spd, char * output, int f6pressed) {
-	int i,x,m=0;
-    int score = 0;
+	struct qrq_score_state state = {
+		.speed = speed,
+		.maxspeed = maxspeed,
+		.error_count = errornr,
+		.fixed_speed = fixspeed,
+		.attempt_valid = attemptvalid,
+		.speed_up_step = speedupstep,
+		.speed_down_step = speeddownstep,
+	};
+	int score = qrq_score_attempt(&state, realcall, input, spd, output, CALL_MAX + 1);
 
-	x = strlen(realcall);
-
-	if (strcmp(input, realcall) == 0) {		 /* exact match! */
-		output[0]='-';						/* * == OK, no mistake */
-		output[1]='\0';	
-		if (speed > maxspeed) {maxspeed = speed;}
-		if (!fixspeed) speed += speedupstep;
-		if (attemptvalid) {
-            score =  2*x*spd;						/* score */
-		}
-	}
-	else {									/* assemble error string */
-		errornr += 1;
-		if (strlen(input) >= (size_t)x) {x = (int)strlen(input);}
-		for (i=0;i < x;i++) {
-			if (realcall[i] != input[i]) {
-				m++;								/* mistake! */
-				output[i] = tolower(input[i]);		/* print as lower case */
-			}
-			else {
-				output[i] = input[i];
-			}
-		}
-		output[i]='\0';
-		if ((speed > 20) && !fixspeed) {
-			speed -= speeddownstep;
-			if (speed < 20)
-				speed = 20;
-		}
-
-		/* score when 1-3 mistakes was made */
-		if ((m < 4) && attemptvalid) {
-			score = (int) (2*x*spd)/(5*m);
-		}
-	}
+	speed = state.speed;
+	maxspeed = state.maxspeed;
+	errornr = state.error_count;
 
 	if (append_summary(summary_scr_fmt, realcall, input, output, spd, spd/5,
 			score, f6pressed ? '*' : ' ') != 0) {

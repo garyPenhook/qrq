@@ -59,13 +59,16 @@ jobs:
           cc -std=c17 -D_POSIX_C_SOURCE=200809L -DOSS \
             '-DDESTDIR="/usr"' '-DVERSION="0.3.5"' -I src \
             -Wall -Wextra -Wpedantic -Wformat=2 -Wstrict-prototypes -Werror \
-            -fsyntax-only src/qrq.c src/oss.c
+            -fsyntax-only src/qrq.c src/score.c src/oss.c
+
+      - name: Run core unit tests
+        run: make -C src USE_PA=NO check
 
       - name: Run cppcheck
         run: |
           cppcheck --enable=warning,performance,portability --std=c99 \
             --platform=unix64 --suppress=missingIncludeSystem --quiet \
-            src/qrq.c src/oss.c src/pulseaudio.c
+            src/qrq.c src/score.c src/oss.c src/pulseaudio.c
 
   sanitizers:
     name: ASan and UBSan smoke test

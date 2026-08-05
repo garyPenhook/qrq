@@ -96,8 +96,10 @@ PulseAudio has not been built locally because `pulse/simple.h` and the
 
 1. [x] Add configurable session lengths; 50 calls remains the comparable
    high-score default, with `[` and `]` changing the setting by five calls.
-2. Extract pure scoring, Morse timing, callbase, and configuration modules.
-3. Add unit tests and sanitizer targets.
+2. [~] Extract pure scoring, Morse timing, callbase, and configuration modules.
+   Scoring now lives in `src/score.c`; timing, callbase, and config remain.
+3. [~] Add unit tests and sanitizer targets. Scoring tests run in CI alongside
+   the existing sanitizer smoke test.
 4. [x] Add GitHub Actions for GCC/Clang and OSS/PulseAudio builds, plus
    cppcheck and an ASan/UBSan smoke test. Add MinGW coverage next.
 5. [x] Add independent up/down speed steps; legacy `speedstep` configs remain
