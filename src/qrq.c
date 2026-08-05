@@ -180,6 +180,7 @@ static int append_summary(const char *format, ...);
 static int validchar(int c);
 static void free_calls(void);
 static int copy_file(const char *source_path, const char *destination_path);
+static int write_file_atomic(const char *path, const void *data, size_t length);
 
 /* The audio worker and ncurses input loop run concurrently.  Do not access
  * this state directly: a plain int (or volatile int) is a data race. */
@@ -1506,20 +1507,10 @@ static int add_to_toplist(char *mycall, int score, int maxspeed) {
 	memcpy(new_data + insert_offset + line_length, old_data,
 			file_size - insert_offset);
 
-	if ((fh = fopen(tlfilename, "wb")) == NULL) {
-		fprintf(stderr, "Unable to open toplist file %s for writing!\n", tlfilename);
+	if (write_file_atomic(tlfilename, new_data, file_size + line_length) != 0) {
+		fprintf(stderr, "Unable to atomically update toplist file %s!\n", tlfilename);
 		goto cleanup;
 	}
-	if (fwrite(new_data, 1, file_size + line_length, fh) != file_size + line_length) {
-		fprintf(stderr, "Unable to write toplist file %s!\n", tlfilename);
-		goto cleanup;
-	}
-	if (fclose(fh) != 0) {
-		fh = NULL;
-		fprintf(stderr, "Unable to close toplist file %s!\n", tlfilename);
-		goto cleanup;
-	}
-	fh = NULL;
 	result = 0;
 
 cleanup:
@@ -2176,21 +2167,11 @@ static int save_config () {
 		config_len = updated_len;
 	}
 
-	if ((fh = fopen(rcfilename, "wb")) == NULL) {
+	if (write_file_atomic(rcfilename, config, config_len) != 0) {
 		endwin();
-		fprintf(stderr, "Unable to open config file '%s' for writing!\n", rcfilename);
+		fprintf(stderr, "Unable to atomically update config file '%s'!\n", rcfilename);
 		goto cleanup;
 	}
-	if (fwrite(config, 1, config_len, fh) != config_len) {
-		fprintf(stderr, "Unable to write config file '%s'!\n", rcfilename);
-		goto cleanup;
-	}
-	if (fclose(fh) != 0) {
-		fh = NULL;
-		fprintf(stderr, "Unable to close config file '%s'!\n", rcfilename);
-		goto cleanup;
-	}
-	fh = NULL;
 	result = 0;
 
 cleanup:
@@ -2278,20 +2259,10 @@ static int check_toplist () {
 		memcpy(converted + new_offset + 21, "1181234567\n", 11);
 	}
 
-	if ((fh = fopen(tlfilename, "wb")) == NULL) {
-		fprintf(stderr, "Unable to open toplist file %s for writing!\n", tlfilename);
+	if (write_file_atomic(tlfilename, converted, file_size / 21 * 32) != 0) {
+		fprintf(stderr, "Unable to atomically update toplist file %s!\n", tlfilename);
 		goto cleanup;
 	}
-	if (fwrite(converted, 1, file_size / 21 * 32, fh) != file_size / 21 * 32) {
-		fprintf(stderr, "Unable to write toplist file %s!\n", tlfilename);
-		goto cleanup;
-	}
-	if (fclose(fh) != 0) {
-		fh = NULL;
-		fprintf(stderr, "Unable to close toplist file %s!\n", tlfilename);
-		goto cleanup;
-	}
-	fh = NULL;
 	printw(" done!\n");
 	result = 0;
 
@@ -2340,6 +2311,72 @@ cleanup:
 	if (source != NULL) {
 		fclose(source);
 	}
+	return result;
+}
+
+/* Write through a same-directory temporary file, then replace the destination.
+ * rename() is atomic on POSIX when both paths reside on the same filesystem. */
+static int write_file_atomic(const char *path, const void *data, size_t length) {
+	char *temporary_path = NULL;
+	FILE *temporary_file = NULL;
+	size_t path_length;
+	int temporary_fd = -1;
+	int result = -1;
+
+	path_length = strlen(path);
+	if (path_length > SIZE_MAX - 12) {
+		return -1;
+	}
+	temporary_path = malloc(path_length + 12);
+	if (temporary_path == NULL) {
+		return -1;
+	}
+	(void)snprintf(temporary_path, path_length + 12, "%s.tmp.XXXXXX", path);
+	temporary_fd = mkstemp(temporary_path);
+	if (temporary_fd == -1) {
+		goto cleanup;
+	}
+	temporary_file = fdopen(temporary_fd, "wb");
+	if (temporary_file == NULL) {
+		close(temporary_fd);
+		temporary_fd = -1;
+		goto cleanup;
+	}
+	temporary_fd = -1;
+	if ((length != 0 && fwrite(data, 1, length, temporary_file) != length) ||
+			fflush(temporary_file) != 0) {
+		goto cleanup;
+	}
+#ifndef WIN32
+	if (fsync(fileno(temporary_file)) != 0) {
+		goto cleanup;
+	}
+#endif
+	if (fclose(temporary_file) != 0) {
+		temporary_file = NULL;
+		goto cleanup;
+	}
+	temporary_file = NULL;
+#ifdef WIN32
+	if (!MoveFileExA(temporary_path, path,
+			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+		goto cleanup;
+	}
+#else
+	if (rename(temporary_path, path) != 0) {
+		goto cleanup;
+	}
+#endif
+	result = 0;
+
+cleanup:
+	if (temporary_file != NULL) {
+		fclose(temporary_file);
+	}
+	if (result != 0 && temporary_path != NULL) {
+		unlink(temporary_path);
+	}
+	free(temporary_path);
 	return result;
 }
 

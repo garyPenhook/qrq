@@ -19,7 +19,7 @@ practice.
 - Remove the audio-completion data race and define thread ownership clearly.
 - Check allocation, audio, file, and thread errors consistently.
 - Replace shell-based file copies and predictable temporary files.
-- Make config and score updates atomic and migrate existing user data safely.
+- [x] Make config and score updates atomic and migrate existing user data safely.
 - Add focused tests for scoring, Morse timing, callbase parsing, and config I/O.
 
 ## Phase 2: Build and release engineering

@@ -84,6 +84,8 @@ PulseAudio has not been built locally because `pulse/simple.h` and the
 7. [x] Repair config/toplist allocation and short-I/O handling. The focused
    C99 `cppcheck` pass is clean after rewriting the config writer, score
    insertion, and old-toplist conversion.
+8. [x] Write config and toplist updates through same-directory temporary
+   files and atomically replace the destination after a complete flush.
 
 ## Known compiler/static-analysis debt
 
