@@ -99,12 +99,14 @@ PulseAudio has not been built locally because `pulse/simple.h` and the
 
 ## After safety hardening
 
-1. Extract pure scoring, Morse timing, callbase, and configuration modules.
-2. Add unit tests and sanitizer targets.
-3. Add GitHub Actions for GCC, Clang, OSS/no-audio, PulseAudio, and MinGW.
-4. Add configurable session lengths and independent up/down speed steps.
-5. Add missed-item review and adaptive selection.
-6. Continue with statistics, terminal resize support, packaging, and advanced
+1. [x] Add configurable session lengths; 50 calls remains the comparable
+   high-score default, with `[` and `]` changing the setting by five calls.
+2. Extract pure scoring, Morse timing, callbase, and configuration modules.
+3. Add unit tests and sanitizer targets.
+4. Add GitHub Actions for GCC, Clang, OSS/no-audio, PulseAudio, and MinGW.
+5. Add independent up/down speed steps.
+6. Add missed-item review and adaptive selection.
+7. Continue with statistics, terminal resize support, packaging, and advanced
    audio modes from `ROADMAP.md`.
 
 ## Useful inspection commands

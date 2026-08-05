@@ -32,7 +32,7 @@ practice.
 
 ## Phase 3: Training options
 
-- Configurable session lengths instead of a fixed 50/all choice.
+- [x] Configurable session lengths instead of a fixed 50/all choice.
 - Independent speed-up and speed-down steps.
 - Accuracy-target and fixed-speed session policies.
 - Missed-item review queue and error-weighted adaptive selection.

@@ -128,6 +128,7 @@ static int ctonefreq=800;               /* if constanttone=1 use this freq */
 static int f6=0;						/* f6 = 1: allow unlimited repeats */
 static int fixspeed=0;					/* keep speed fixed, regardless of err*/
 static int unlimitedattempt=0;			/* attempt with all calls  of the DB */
+static int sessionlength=50;				/* calls per standard practice session */
 static int attemptvalid=1;				/* 1 = not using any "cheats" */
 static unsigned long int nrofcalls=0;	
 static int toplist_own=0;               /* show only own call on toplist */
@@ -251,6 +252,7 @@ int main (int argc, char *argv[]) {
 	char tmp[CALL_MAX + 1]="";
 	char input[CALL_MAX + 1]="";
 	int i=0,j=0,k=0;						/* counter etc. */
+	int attempt_limit;
 	char previouscall[CALL_MAX + 1]="";
 	int previousfreq = 0;
 	int f6pressed=0;
@@ -300,7 +302,7 @@ int main (int argc, char *argv[]) {
 	read_config();
 
 	attemptvalid = 1;
-	if (f6 || fixspeed || unlimitedattempt) {
+	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50) {
 		attemptvalid = 0;	
 	}
 
@@ -366,7 +368,13 @@ while (status == 1) {
 	mvwaddstr(mid_w,1,1, "Usage:");
 	mvwaddstr(mid_w,10,2, "F6                          F10       ");
 	wattroff(mid_w, A_BOLD);
-	mvwaddstr(mid_w,2,2, "After entering your callsign, 50 random callsigns");
+	if (unlimitedattempt) {
+		mvwaddstr(mid_w,2,2, "After entering your callsign, all random callsigns");
+	}
+	else {
+		mvwprintw(mid_w,2,2, "After entering your callsign, %d random callsigns",
+				sessionlength);
+	}
 	mvwaddstr(mid_w,3,2, "from a database will be sent. After each callsign,");
 	mvwaddstr(mid_w,4,2, "enter what you have heard. If you copied correctly,");
 	mvwaddstr(mid_w,5,2, "full points are credited and the speed increases by");
@@ -461,10 +469,19 @@ while (status == 1) {
 	/* Reread callbase */
 	nrofcalls = read_callbase();
 
-	/****** send 50 or unlimited calls, ask for input, score ******/
+	/****** send a configured number of calls, ask for input, score ******/
     start_summary_file();
-	
-    for (callnr=1; callnr <= (unlimitedattempt ? nrofcalls : 50); callnr++) {
+	if (nrofcalls > (unsigned long)INT_MAX) {
+		attempt_limit = INT_MAX;
+	}
+	else if (unlimitedattempt || sessionlength > (int)nrofcalls) {
+		attempt_limit = (int)nrofcalls;
+	}
+	else {
+		attempt_limit = sessionlength;
+	}
+
+    for (callnr=1; callnr <= attempt_limit; callnr++) {
 		/* Make sure to wait for the cwthread of the previous callsign, if
 		 * necessary. */
 #ifdef WIN_THREADS
@@ -478,13 +495,6 @@ while (status == 1) {
 			i = (int) ((float) nrofcalls*rand()/(RAND_MAX+1.0));
 		} while (calls[i] == NULL);
 
-		/* only relevant for callbases with less than 50 calls */
-		if (nrofcalls == callnr) { 		/* Only one call left!" */
-				callnr =  51; 			/* Get out after next one */
-		}
-
-
-
 		/* output frequency handling a) random b) fixed */
 		if ( constanttone == 0 ) {
 				/* random freq, fraction of samplerate */
@@ -495,7 +505,10 @@ while (status == 1) {
 		}
 
 		mvwprintw(bot_w,1,1,"                                      ");
-		mvwprintw(bot_w, 1, 1, "%3d/%s", callnr, unlimitedattempt ? "-" : "50");	
+		mvwprintw(bot_w, 1, 1, "%3d/%s", callnr, unlimitedattempt ? "-" : "");
+		if (!unlimitedattempt) {
+			wprintw(bot_w, "%d", attempt_limit);
+		}
 		wrefresh(bot_w);	
 		tmp[0]='\0';
 
@@ -692,6 +705,18 @@ while ((j = getch()) != 0) {
 		case 'u':
 				unlimitedattempt = (unlimitedattempt ? 0 : 1);
 			break;
+		case '[':
+			if (sessionlength > 5) {
+				sessionlength -= 5;
+			}
+			unlimitedattempt = 0;
+			break;
+		case ']':
+			if (sessionlength <= INT_MAX - 5) {
+				sessionlength += 5;
+			}
+			unlimitedattempt = 0;
+			break;
 		case KEY_UP: 
 			initialspeed += 10;
 			break;
@@ -779,7 +804,7 @@ while ((j = getch()) != 0) {
 	speed = initialspeed;
 
 	attemptvalid = 1;
-	if (f6 || fixspeed || unlimitedattempt) {
+	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50) {
 		attemptvalid = 0;	
 	}
 
@@ -833,8 +858,12 @@ void update_parameter_dialog () {
 					"                  f", (f6 ? "yes" : "no"));
 	mvwprintw(conf_w,10,2, "Fixed CW speed*:       %-3s"
 					"                  s", (fixspeed ? "yes" : "no"));
-	mvwprintw(conf_w,11,2, "Unlimited attempt*:    %-3s"
-					"                  u", (unlimitedattempt ? "yes" : "no"));
+	mvwprintw(conf_w,11,2, "Session calls*:         %-5s"
+					"                [ / ] or u",
+			unlimitedattempt ? "all" : "");
+	if (!unlimitedattempt) {
+		wprintw(conf_w, "%d", sessionlength);
+	}
 	if (!callnr) {
 		mvwprintw(conf_w,12,2, "Callsign database:     %-15s"
 					"      d (%ld)", basename(cbfilename),nrofcalls);
@@ -1571,6 +1600,21 @@ static int read_config () {
 			}
 			printw("  line  %2d: unlim. att.:  %s\n", line, (unlimitedattempt ? "yes":"no"));
         }
+		else if (tmp == strstr(tmp, "sessionlength=")) {
+			while (isdigit((unsigned char)(tmp[i] = tmp[14+i]))) {
+				i++;
+			}
+			tmp[i] = '\0';
+			k = atoi(tmp);
+			if (k > 0) {
+				sessionlength = k;
+				printw("  line  %2d: session length: %d\n", line, sessionlength);
+			}
+			else {
+				printw("  line  %2d: session length: >%s< invalid. Using default %d.\n",
+						line, tmp, sessionlength);
+			}
+        }
 		else if (tmp == strstr(tmp,"callbase=")) {
 			while (isgraph(tmp[i] = tmp[9+i])) {
 				i++;
@@ -1864,7 +1908,7 @@ static int save_config () {
 		"callsign", "callbase", "dspdevice", "initialspeed",
 		"mincharspeed", "waveform", "constanttone", "ctonefreq",
 		"fixspeed", "unlimitedattempt", "f6", "risetime", "speedstep",
-		"stoponerror"
+		"sessionlength", "stoponerror"
 	};
 	FILE *fh = NULL;
 	char tmp[PATH_MAX + 80];
@@ -1933,6 +1977,7 @@ static int save_config () {
 			case 10: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], f6); break;
 			case 11: written = snprintf(tmp, sizeof(tmp), "%s=%f ", confopts[i], edge); break;
 			case 12: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], speedstep); break;
+			case 13: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], sessionlength); break;
 			default: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], stoponerror); break;
 		}
 		if (written < 0 || (size_t)written >= sizeof(tmp)) {

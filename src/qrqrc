@@ -8,6 +8,9 @@ callsign=MYCALL       # your callsign
 initialspeed=100      # initial speed in Letters per Minute / LpM (5 LpM = 1 WpM)
 mincharspeed=100      # minimum character speed. below, Farnsworth is used
 speedstep=10          # speed increase/decrease after each attempt in LpM
+# number of calls per session; 50 is the standard, comparable high-score mode
+# (use the F5 configuration screen to change it in steps of five)
+sessionlength=50
 dspdevice=/dev/dsp    # your DSP device, usually /dev/dsp (for OSS only)
 
 # risetime and falltime for shaping the CW sigs (in milliseconds). recommended
