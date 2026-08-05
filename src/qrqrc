@@ -27,6 +27,12 @@ reviewmisses=0
 # minimum whole-session accuracy for a local toplist entry; 0 disables it
 # values: 0 or 50..100
 accuracytarget=0
+# optional callbase filters: comma-separated prefixes, digit/portable mode
+# (0 = any, 1 = required, 2 = excluded), and a character whitelist
+callprefixes=
+digitmode=0
+portablemode=0
+allowedchars=
 dspdevice=/dev/dsp    # your DSP device, usually /dev/dsp (for OSS only)
 
 # risetime and falltime for shaping the CW sigs (in milliseconds). recommended

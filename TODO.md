@@ -111,8 +111,9 @@ The OSS and PulseAudio backends both build locally.
 7. [x] Add missed-item review and adaptive selection. Enable
    `adaptiveselection=1` to weight difficult calls, or `reviewmisses=1` to
    schedule copied-wrong calls again in the same session.
-8. [~] Add filters for call length, prefixes, digits, portable suffixes, and
-   characters. Length filtering is available through `qrqrc`.
+8. [x] Add filters for call length, prefixes, digits, portable suffixes, and
+   characters. See `mincalllength`, `maxcalllength`, `callprefixes`,
+   `digitmode`, `portablemode`, and `allowedchars` in `qrqrc`.
 9. [x] Separate the runtime install prefix from package staging. `PREFIX`
    defaults to `/usr`; `DESTDIR` can now stage a package tree safely.
 10. Future product features—history analytics, advanced

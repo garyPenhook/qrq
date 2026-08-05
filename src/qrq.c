@@ -145,6 +145,10 @@ static int unlimitedattempt=0;			/* attempt with all calls  of the DB */
 static int sessionlength=50;				/* calls per standard practice session */
 static int mincalllength=1;
 static int maxcalllength=CALL_MAX;
+static char callprefixes[128]="";
+static int digitmode=0;
+static int portablemode=0;
+static char allowedchars[CALL_MAX + 1]="";
 static int adaptiveselection=0;
 static int reviewmisses=0;
 static int accuracytarget=0;
@@ -1794,6 +1798,36 @@ static int read_config (void) {
 			printw("  line  %2d: review misses: %s\n", line,
 					reviewmisses ? "yes" : "no");
 		}
+		else if (tmp == strstr(tmp, "callprefixes=")) {
+			while (i < (int)sizeof(callprefixes) - 1 && i < (int)sizeof(tmp) - 14 &&
+					isgraph((unsigned char)(tmp[i] = (char)toupper((unsigned char)tmp[13 + i])))) {
+				i++;
+			}
+			tmp[i] = '\0';
+			strcpy(callprefixes, tmp);
+			printw("  line  %2d: call prefixes: %s\n", line,
+					callprefixes[0] == '\0' ? "all" : callprefixes);
+		}
+		else if (tmp == strstr(tmp, "digitmode=")) {
+			digitmode = tmp[10] - '0';
+			if (digitmode < 0 || digitmode > 2) digitmode = 0;
+			printw("  line  %2d: digit mode: %d\n", line, digitmode);
+		}
+		else if (tmp == strstr(tmp, "portablemode=")) {
+			portablemode = tmp[13] - '0';
+			if (portablemode < 0 || portablemode > 2) portablemode = 0;
+			printw("  line  %2d: portable mode: %d\n", line, portablemode);
+		}
+		else if (tmp == strstr(tmp, "allowedchars=")) {
+			while (i < (int)sizeof(allowedchars) - 1 && i < (int)sizeof(tmp) - 14 &&
+					isgraph((unsigned char)(tmp[i] = (char)toupper((unsigned char)tmp[13 + i])))) {
+				i++;
+			}
+			tmp[i] = '\0';
+			strcpy(allowedchars, tmp);
+			printw("  line  %2d: allowed characters: %s\n", line,
+					allowedchars[0] == '\0' ? "all" : allowedchars);
+		}
 		else if (tmp == strstr(tmp, "accuracytarget=")) {
 			while (isdigit((unsigned char)(tmp[i] = tmp[15 + i]))) {
 				i++;
@@ -2122,7 +2156,8 @@ static int save_config (void) {
 		"fixspeed", "unlimitedattempt", "f6", "risetime", "speedstep",
 		"speedupstep", "speeddownstep", "sessionlength", "mincalllength",
 		"maxcalllength", "stoponerror", "adaptiveselection", "reviewmisses",
-		"accuracytarget"
+		"accuracytarget", "callprefixes", "digitmode", "portablemode",
+		"allowedchars"
 	};
 	FILE *fh = NULL;
 	char tmp[PATH_MAX + 80];
@@ -2199,7 +2234,11 @@ static int save_config (void) {
 			case 18: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], stoponerror); break;
 			case 19: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], adaptiveselection); break;
 			case 20: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], reviewmisses); break;
-			default: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], accuracytarget); break;
+			case 21: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], accuracytarget); break;
+			case 22: written = snprintf(tmp, sizeof(tmp), "%s=%s ", confopts[i], callprefixes); break;
+			case 23: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], digitmode); break;
+			case 24: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], portablemode); break;
+			default: written = snprintf(tmp, sizeof(tmp), "%s=%s ", confopts[i], allowedchars); break;
 		}
 		if (written < 0 || (size_t)written >= sizeof(tmp)) {
 			fprintf(stderr, "Unable to format config option '%s'.\n", confopts[i]);
@@ -2721,9 +2760,17 @@ static void free_calls(void) {
 }
 
 static int read_callbase(void) {
+	const struct qrq_callbase_filter filter = {
+		.minimum_length = (size_t)mincalllength,
+		.maximum_length = (size_t)maxcalllength,
+		.prefixes = callprefixes,
+		.digit_mode = digitmode,
+		.portable_mode = portablemode,
+		.allowed_chars = allowedchars,
+	};
+
 	free_calls();
-	if (qrq_callbase_load(cbfilename, (size_t)mincalllength,
-			(size_t)maxcalllength, &loaded_callbase) != 0) {
+	if (qrq_callbase_load(cbfilename, &filter, &loaded_callbase) != 0) {
 		endwin();
 		fprintf(stderr, "Error: Couldn't load callsign database '%s': %s\n",
 				cbfilename, strerror(errno));

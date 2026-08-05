@@ -23,6 +23,64 @@ static int normalize_line(char *line, size_t *length, int at_end_of_file) {
 	return 0;
 }
 
+static int has_prefix(const char *line, const char *prefixes) {
+	const char *prefix = prefixes;
+
+	if (prefixes == NULL || *prefixes == '\0') {
+		return 1;
+	}
+	while (*prefix != '\0') {
+		const char *end = strchr(prefix, ',');
+		size_t length = end == NULL ? strlen(prefix) : (size_t)(end - prefix);
+		if (length != 0 && strncmp(line, prefix, length) == 0) {
+			return 1;
+		}
+		if (end == NULL) {
+			break;
+		}
+		prefix = end + 1;
+	}
+	return 0;
+}
+
+static int matches_filter(const char *line, size_t length,
+		const struct qrq_callbase_filter *filter) {
+	size_t i;
+	int has_digit = 0;
+	int is_portable = 0;
+
+	if (length < filter->minimum_length || length > filter->maximum_length ||
+			!has_prefix(line, filter->prefixes)) {
+		return 0;
+	}
+	for (i = 0; i < length; i++) {
+		if (isdigit((unsigned char)line[i])) {
+			has_digit = 1;
+		}
+		if (line[i] == '/' && i + 1 < length) {
+			is_portable = 1;
+		}
+		if (filter->allowed_chars != NULL && *filter->allowed_chars != '\0' &&
+				strchr(filter->allowed_chars, line[i]) == NULL) {
+			return 0;
+		}
+	}
+	if ((filter->digit_mode == 1 && !has_digit) ||
+			(filter->digit_mode == 2 && has_digit) ||
+			(filter->portable_mode == 1 && !is_portable) ||
+			(filter->portable_mode == 2 && is_portable)) {
+		return 0;
+	}
+	return 1;
+}
+
+static void uppercase_line(char *line, size_t length) {
+	size_t i;
+	for (i = 0; i < length; i++) {
+		line[i] = (char)toupper((unsigned char)line[i]);
+	}
+}
+
 void qrq_callbase_free(struct qrq_callbase *callbase) {
 	size_t i;
 	if (callbase == NULL) {
@@ -37,8 +95,8 @@ void qrq_callbase_free(struct qrq_callbase *callbase) {
 	callbase->max_length = 0;
 }
 
-int qrq_callbase_load(const char *path, size_t minimum_length,
-		size_t maximum_length, struct qrq_callbase *callbase) {
+int qrq_callbase_load(const char *path, const struct qrq_callbase_filter *filter,
+		struct qrq_callbase *callbase) {
 	char line[QRQ_CALLBASE_MAX_LENGTH + 3];
 	FILE *file;
 	size_t line_length;
@@ -47,8 +105,12 @@ int qrq_callbase_load(const char *path, size_t minimum_length,
 	size_t index = 0;
 	int read_status = -1;
 
-	if (path == NULL || callbase == NULL || minimum_length == 0 ||
-			maximum_length < minimum_length || maximum_length > QRQ_CALLBASE_MAX_LENGTH) {
+	if (path == NULL || filter == NULL || callbase == NULL ||
+			filter->minimum_length == 0 ||
+			filter->maximum_length < filter->minimum_length ||
+			filter->maximum_length > QRQ_CALLBASE_MAX_LENGTH ||
+			filter->digit_mode < 0 || filter->digit_mode > 2 ||
+			filter->portable_mode < 0 || filter->portable_mode > 2) {
 		errno = EINVAL;
 		return -1;
 	}
@@ -68,7 +130,8 @@ int qrq_callbase_load(const char *path, size_t minimum_length,
 			errno = EOVERFLOW;
 			goto cleanup;
 		}
-		if (line_length >= minimum_length && line_length <= maximum_length) {
+		uppercase_line(line, line_length);
+		if (matches_filter(line, line_length, filter)) {
 			selected++;
 			if (line_length > max_length) {
 				max_length = line_length;
@@ -98,7 +161,8 @@ int qrq_callbase_load(const char *path, size_t minimum_length,
 			errno = EOVERFLOW;
 			goto cleanup;
 		}
-		if (line_length < minimum_length || line_length > maximum_length) {
+		uppercase_line(line, line_length);
+		if (!matches_filter(line, line_length, filter)) {
 			continue;
 		}
 		callbase->items[index] = malloc(line_length + 1);

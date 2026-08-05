@@ -11,8 +11,17 @@ struct qrq_callbase {
 	size_t max_length;
 };
 
-int qrq_callbase_load(const char *path, size_t minimum_length,
-		size_t maximum_length, struct qrq_callbase *callbase);
+struct qrq_callbase_filter {
+	size_t minimum_length;
+	size_t maximum_length;
+	const char *prefixes;       /* comma-separated; empty means all */
+	int digit_mode;             /* 0 any, 1 required, 2 excluded */
+	int portable_mode;          /* 0 any, 1 required, 2 excluded */
+	const char *allowed_chars;  /* empty means all */
+};
+
+int qrq_callbase_load(const char *path, const struct qrq_callbase_filter *filter,
+		struct qrq_callbase *callbase);
 void qrq_callbase_free(struct qrq_callbase *callbase);
 
 #endif

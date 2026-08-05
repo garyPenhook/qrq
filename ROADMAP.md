@@ -45,8 +45,8 @@ practice.
   toplist entry.
 - [x] Add a missed-item review queue and error-weighted adaptive selection.
   Both modes are optional per session and excluded from the comparable toplist.
-- [~] Filters for call length, prefixes, digits, portable suffixes, and
-  characters. Length filtering is available through `qrqrc`.
+- [x] Filters for call length, prefixes, digits, portable suffixes, and
+  characters through `qrqrc`; all constraints are applied by the loader.
 - Seeded sessions for repeatable challenges.
 
 ## Phase 4: Feedback and statistics
