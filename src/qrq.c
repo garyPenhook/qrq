@@ -58,6 +58,14 @@ typedef int AUDIO_HANDLE;
 #include <windows.h>
 #endif
 
+#ifdef WIN_THREADS
+#define MORSE_THREAD_RETURN unsigned __stdcall
+#define MORSE_THREAD_RESULT 0U
+#else
+#define MORSE_THREAD_RETURN void *
+#define MORSE_THREAD_RESULT NULL
+#endif
+
 #define PI 3.14159265358979323846
 
 #define SILENCE 0		/* Waveforms for the tone generator */
@@ -195,7 +203,7 @@ static int add_to_toplist(char * mycall, int score, int maxspeed);
 static int read_config(void);
 static int save_config(void);
 static int tonegen(int freq, int length, int waveform);
-static void *morse(void * arg); 
+static MORSE_THREAD_RETURN morse(void *arg);
 static int add_to_buf(const void *data, size_t size);
 static int readline(WINDOW *win, int y, int x, char *line, int capitals, int len); 
 static void thread_fail (int j);
@@ -1923,7 +1931,7 @@ static int read_config(void) {
 	printw("Finished reading qrqrc.\n");
 	return 0;
 }
-static void *morse(void *arg) { 
+static MORSE_THREAD_RETURN morse(void *arg) {
 	char * text = arg;
 	int i,j;
 	int c, fulldotlen, dotlen, dashlen, charspeed, farnsworth, fwdotlen;
@@ -1953,7 +1961,7 @@ static void *morse(void *arg) {
 #ifdef PA
 	if (dsp_fd == NULL) {
 		set_sending_complete(1);
-		return NULL;
+		return MORSE_THREAD_RESULT;
 	}
 #endif
 	/* set bufpos to 0 */
@@ -2095,14 +2103,14 @@ static void *morse(void *arg) {
 	close_audio(dsp_fd);
 #endif
 	set_sending_complete(1);
-	return NULL;
+	return MORSE_THREAD_RESULT;
 
 audio_error:
 #ifdef OSS
 	(void) close_audio(dsp_fd);
 #endif
 	set_sending_complete(1);
-	return NULL;
+	return MORSE_THREAD_RESULT;
 }
 
 static int add_to_buf(const void *data, size_t size)
