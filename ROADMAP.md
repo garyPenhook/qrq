@@ -11,7 +11,8 @@ practice.
 - [x] Restore correct Backspace and Delete behavior.
 - [x] Persist both `speedstep` and `stoponerror` configuration values.
 - [x] Correct the maximum-length input boundary.
-- [ ] Review and document the remaining differences from upstream.
+- [x] Review and document the remaining differences from upstream in
+  `UPSTREAM_DIFF.md`.
 
 ## Phase 1: Correctness and safety
 

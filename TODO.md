@@ -13,14 +13,14 @@ This file is the operational handoff for continuing work on
 - Audio/callbase hardening commit: `be3b586b8ba33e759e863c86d93514cd4d2fa4ec`
 - `origin`: `https://github.com/garyPenhook/qrq.git`
 - `upstream`: `https://git.fkurz.net/dj1yfk/qrq.git`
-- Published to `origin/master` through `317aef9`.
+- Published to `origin/master` through `caee299`.
 
 Important: do not discard or overwrite unrelated local work. Upstream and the
 fork have unrelated Git histories, so the upstream tree was applied on top of
 the fork commit as a reviewable content update. Upstream also moved program
 sources into `src/` and removed the obsolete in-tree Debian packaging.
 
-## Completed in the current staged change
+## Completed modernization work
 
 - Imported official upstream master, including post-0.3.5 maintenance.
 - Added `ROADMAP.md`.
@@ -100,12 +100,12 @@ PulseAudio has not been built locally because `pulse/simple.h` and the
 3. Add unit tests and sanitizer targets.
 4. [x] Add GitHub Actions for GCC/Clang and OSS/PulseAudio builds, plus
    cppcheck and an ASan/UBSan smoke test. Add MinGW coverage next.
-9. [x] Add a warning-free strict C17 syntax gate with `-Werror`.
 5. [x] Add independent up/down speed steps; legacy `speedstep` configs remain
    compatible, while `speedupstep` and `speeddownstep` persist separately.
 6. Add missed-item review and adaptive selection.
 7. Continue with statistics, terminal resize support, packaging, and advanced
    audio modes from `ROADMAP.md`.
+8. [x] Add a warning-free strict C17 syntax gate with `-Werror`.
 
 ## Useful inspection commands
 
