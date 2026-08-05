@@ -10,6 +10,7 @@ This file is the operational handoff for continuing work on
 - Original fork commit: `4e673e4c70d52d207a23e5ef2240e54bb6aa82d2`
 - Imported upstream commit: `6174eeebec97cf56a041663cd1558beddee75b36`
 - Local baseline commit: `c590cd2845cd255884af2868d1653037c6a6c963`
+- Audio/callbase hardening commit: `be3b586b8ba33e759e863c86d93514cd4d2fa4ec`
 - `origin`: `https://github.com/garyPenhook/qrq.git`
 - `upstream`: `https://git.fkurz.net/dj1yfk/qrq.git`
 - No local commits have been pushed.
@@ -78,16 +79,15 @@ PulseAudio has not been built locally because `pulse/simple.h` and the
 5. [x] Fix callbase ownership. `read_callbase()` now tracks allocated rows,
    frees every string on reload, and safely cleans up after a partial
    allocation failure.
-6. [ ] Replace shell-based copies and fixed `/tmp/qrq-*` paths with direct file I/O
-   and securely created temporary files.
-7. [ ] Repair config and toplist allocation/error handling. `cppcheck` currently
-   identifies unchecked `malloc`, unsafe direct `realloc` assignment, and
-   unchecked `fopen` results.
+6. [ ] Replace the remaining shell-based copies and fixed `/tmp/qrq-plot`
+   path with direct file I/O and securely created temporary files. The
+   toplist migration no longer uses `system()` or `/tmp/qrq-toplist`.
+7. [x] Repair config/toplist allocation and short-I/O handling. The focused
+   C99 `cppcheck` pass is clean after rewriting the config writer, score
+   insertion, and old-toplist conversion.
 
 ## Known compiler/static-analysis debt
 
-- `save_config()` can overflow its 4096-byte `tmp` buffer when serializing a
-  maximum-length database or DSP path.
 - `close_summary_file()` silently truncates an overlong output path.
 - Many no-argument functions use old `func()` declarations instead of
   `func(void)`.
@@ -95,8 +95,6 @@ PulseAudio has not been built locally because `pulse/simple.h` and the
 - Dynamically constructed format strings prevent compiler format checking.
 - Summary construction uses repeated unbounded `sprintf()` into a fixed
   65536-byte global buffer.
-- `add_to_toplist()` and `save_config()` do not safely handle allocation or
-  short-I/O failures.
 - The staged upstream files contain substantial pre-existing whitespace/CRLF
   noise; do not mix a repository-wide formatting pass into correctness fixes.
 

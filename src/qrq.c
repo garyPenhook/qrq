@@ -1234,76 +1234,130 @@ static int clear_parameter_display() {
  * going down from the top of the list until the score in the current line is
  * lower than the score made. then */
 
-static int add_to_toplist(char * mycall, int score, int maxspeed) {
-	FILE *fh;	
-	char *part1, *part2;
-	char tmp[35]="";
-	char insertline[35]="DJ1YFK     36666 333 1111111111";		/* example */
-						/* call       pts   max timestamp */
-	int i=0, k=0, j=0;
-	int pos = 0;		/* position where first score < our score appears */
-	int timestamp = 0;
-	int len = 32;		/* length of a line. 32 for unix, 33 for Win */
+static int add_to_toplist(char *mycall, int score, int maxspeed) {
+	FILE *fh = NULL;
+	char *old_data = NULL;
+	char *new_data = NULL;
+	char insertline[35];
+	char score_text[7];
+	char *endptr;
+	size_t file_size;
+	size_t insert_offset;
+	size_t line_length;
+	size_t offset;
+	long file_length;
+	long timestamp;
+	long listed_score;
+	int written;
+	int result = -1;
 
 	/* For the training modes */
 	if (score == 0) {
 		return 0;
 	}
 
-	timestamp = (int) time(NULL);
-	sprintf(insertline, "%-10s%6d %3d %10d", mycall, score, maxspeed, timestamp);
-	
-	if ((fh = fopen(tlfilename, "rb+")) == NULL) {
-		printf("Unable to open toplist file %s!\n", tlfilename);
-		exit(EXIT_FAILURE);
+	timestamp = (long)time(NULL);
+	written = snprintf(insertline, sizeof(insertline),
+			"%-10.10s%6d %3d %10ld", mycall, score, maxspeed, timestamp);
+	if (written != 31) {
+		fprintf(stderr, "Unable to format toplist entry.\n");
+		return -1;
 	}
 
-	/* find out if we use CRLF or just LF */
-	fgets(tmp, 35, fh);
-	if (tmp[31] == '\r') {	/* CRLF */
-		len = 33;
-		strcat(insertline, "\r\n");
+	if ((fh = fopen(tlfilename, "rb")) == NULL) {
+		fprintf(stderr, "Unable to open toplist file %s!\n", tlfilename);
+		return -1;
+	}
+
+	if (fseek(fh, 0, SEEK_END) != 0 || (file_length = ftell(fh)) < 0) {
+		fprintf(stderr, "Unable to determine size of toplist file %s!\n", tlfilename);
+		goto cleanup;
+	}
+	file_size = (size_t)file_length;
+	if (fseek(fh, 0, SEEK_SET) != 0) {
+		fprintf(stderr, "Unable to rewind toplist file %s!\n", tlfilename);
+		goto cleanup;
+	}
+
+	old_data = malloc(file_size == 0 ? 1 : file_size);
+	if (old_data == NULL) {
+		fprintf(stderr, "Out of memory while reading toplist.\n");
+		goto cleanup;
+	}
+	if (file_size != 0 && fread(old_data, 1, file_size, fh) != file_size) {
+		fprintf(stderr, "Unable to read toplist file %s!\n", tlfilename);
+		goto cleanup;
+	}
+	if (fclose(fh) != 0) {
+		fh = NULL;
+		fprintf(stderr, "Unable to close toplist file %s!\n", tlfilename);
+		goto cleanup;
+	}
+	fh = NULL;
+
+	/* Toplists use fixed-width entries: 32 bytes with LF, 33 with CRLF. */
+	line_length = file_size >= 32 && old_data[31] == '\r' ? 33 : 32;
+	if (file_size != 0 && file_size % line_length != 0) {
+		fprintf(stderr, "Invalid toplist format in %s!\n", tlfilename);
+		goto cleanup;
+	}
+	if (line_length == 33) {
+		memcpy(insertline + 31, "\r\n", 3);
 	}
 	else {
-		len = 32;
-		strcat(insertline, "\n");
+		memcpy(insertline + 31, "\n", 2);
 	}
 
-	fseek(fh, 0, SEEK_END);
-	j = ftell(fh);
+	if (file_size > SIZE_MAX - line_length) {
+		fprintf(stderr, "Toplist file is too large to update.\n");
+		goto cleanup;
+	}
+	new_data = malloc(file_size + line_length);
+	if (new_data == NULL) {
+		fprintf(stderr, "Out of memory while updating toplist.\n");
+		goto cleanup;
+	}
 
-	part1 = malloc((size_t) j);
-	part2 = malloc((size_t) j + len);	/* one additional entry */
-
-	rewind(fh);
-
-	/* read whole toplist */
-	fread(part1, sizeof(char), (size_t) j, fh);
-
-	/* find first score below "score"; scores at positions 10 + (i*len) */
-
-	do {
-		for (i = 0 ; i < 6 ; i++) {	
-			tmp[i] = part1[i + (10 + pos*len)];
+	insert_offset = file_size;
+	for (offset = 0; offset < file_size; offset += line_length) {
+		memcpy(score_text, old_data + offset + 10, 6);
+		score_text[6] = '\0';
+		errno = 0;
+		listed_score = strtol(score_text, &endptr, 10);
+		if (errno == 0 && *endptr == '\0' && score > listed_score) {
+			insert_offset = offset;
+			break;
 		}
-		k = atoi(tmp);
-		pos++;
-	} while (score < k);
- 
-	/* Found it! Insert own score here! */
-	memcpy(part2, part1, len * (pos-1));
-	memcpy(part2 + len * (pos - 1), insertline, len);
-	memcpy(part2 + len * pos , part1 + len * (pos -1), j - len * (pos - 1));
+	}
 
-	rewind(fh);
-	fwrite(part2, sizeof(char), (size_t) j + len, fh);
-	fclose(fh);
+	memcpy(new_data, old_data, insert_offset);
+	memcpy(new_data + insert_offset, insertline, line_length);
+	memcpy(new_data + insert_offset + line_length, old_data,
+			file_size - insert_offset);
 
-	free(part1);
-	free(part2);
+	if ((fh = fopen(tlfilename, "wb")) == NULL) {
+		fprintf(stderr, "Unable to open toplist file %s for writing!\n", tlfilename);
+		goto cleanup;
+	}
+	if (fwrite(new_data, 1, file_size + line_length, fh) != file_size + line_length) {
+		fprintf(stderr, "Unable to write toplist file %s!\n", tlfilename);
+		goto cleanup;
+	}
+	if (fclose(fh) != 0) {
+		fh = NULL;
+		fprintf(stderr, "Unable to close toplist file %s!\n", tlfilename);
+		goto cleanup;
+	}
+	fh = NULL;
+	result = 0;
 
-	return 0;
-
+cleanup:
+	if (fh != NULL) {
+		fclose(fh);
+	}
+	free(old_data);
+	free(new_data);
+	return result;
 }
 
 
@@ -1772,153 +1826,169 @@ static int tonegen (int freq, int len, int waveform) {
  * */
 
 static int save_config () {
-	FILE *fh;
-	char tmp[4096]="";
-	char confopts[14][80] = {
-		"\ncallsign=", 
-		"\ncallbase=",
-		"\ndspdevice=", 
-		"\ninitialspeed=", 
-		"\nmincharspeed=",
-		"\nwaveform=", 
-		"\nconstanttone=",
-		"\nctonefreq=", 
-		"\nfixspeed=", 
-		"\nunlimitedattempt=", 
-		"\nf6=", 
-		"\nrisetime=", 
-		"\nspeedstep=", 
-		"\nstoponerror=" 
+	static const char *const confopts[] = {
+		"callsign", "callbase", "dspdevice", "initialspeed",
+		"mincharspeed", "waveform", "constanttone", "ctonefreq",
+		"fixspeed", "unlimitedattempt", "f6", "risetime", "speedstep",
+		"stoponerror"
 	};
-	char *conf1;
-	char *conf2;
-	char *find, *findend;
-	int i, len, conf1len, conf2len;
-	int j;
-
-	conf2 = malloc(1);
+	FILE *fh = NULL;
+	char tmp[PATH_MAX + 80];
+	char *config = NULL;
+	char *updated;
+	char *find;
+	char *findend;
+	size_t config_len;
+	size_t find_offset;
+	size_t findend_offset;
+	size_t replacement_len;
+	size_t updated_len;
+	size_t key_len;
+	long file_length;
+	int i;
+	int written;
+	int use_crlf;
+	int result = -1;
 
 	if ((fh = fopen(rcfilename, "rb")) == NULL) {
 		endwin();
 		fprintf(stderr, "Unable to open config file '%s'!\n", rcfilename);
-		exit(EXIT_FAILURE);
+		return -1;
 	}
+	if (fseek(fh, 0, SEEK_END) != 0 || (file_length = ftell(fh)) < 0 ||
+			(size_t)file_length == SIZE_MAX) {
+		fprintf(stderr, "Unable to determine size of config file '%s'!\n", rcfilename);
+		goto cleanup;
+	}
+	config_len = (size_t)file_length;
+	if (fseek(fh, 0, SEEK_SET) != 0) {
+		fprintf(stderr, "Unable to rewind config file '%s'!\n", rcfilename);
+		goto cleanup;
+	}
+	config = malloc(config_len + 1);
+	if (config == NULL) {
+		fprintf(stderr, "Out of memory while reading config file.\n");
+		goto cleanup;
+	}
+	if (config_len != 0 && fread(config, 1, config_len, fh) != config_len) {
+		fprintf(stderr, "Unable to read config file '%s'!\n", rcfilename);
+		goto cleanup;
+	}
+	config[config_len] = '\0';
+	if (fclose(fh) != 0) {
+		fh = NULL;
+		fprintf(stderr, "Unable to close config file '%s'!\n", rcfilename);
+		goto cleanup;
+	}
+	fh = NULL;
+	use_crlf = strstr(config, "\r\n") != NULL;
 
-	fseek(fh, 0, SEEK_END);
-	j = (int) ftell(fh);
-	conf1 = malloc((size_t) j+1);
-
-	rewind(fh);
-	i = fread(conf1, sizeof(char), (size_t) j, fh);
-	conf1[j] = '\0';
-	conf1len = j;
-
-	fclose(fh);
-
-	/* The whole config file is now in conf1 
-	 *
-	 * For each config option, search&replace it with the current value.
-	 * Only accept key=value pairs if the key starts on pos 0 of the line
-	 * */
-
-	//endwin();
-	for (i = 0; i < 14; i++) {
-		/* assemble new string for this conf option*/
+	/* Replace only full keys that begin a line, preserving comments and spacing. */
+	for (i = 0; i < (int)(sizeof(confopts) / sizeof(confopts[0])); i++) {
 		switch (i) {
-			case 0:
-				sprintf(tmp, "%s%s ", confopts[i], mycall);
-				break;
-			case 1:
-				sprintf(tmp, "%s%s ", confopts[i], cbfilename);
-				break;
-			case 2:
-				sprintf(tmp, "%s%s ", confopts[i], dspdevice);
-				break;
-			case 3:
-				sprintf(tmp, "%s%d ", confopts[i], initialspeed);
-				break;
-			case 4:
-				sprintf(tmp, "%s%d ", confopts[i], mincharspeed);
-				break;
-			case 5:
-				sprintf(tmp, "%s%d ", confopts[i], waveform);
-				break;
-			case 6:
-				sprintf(tmp, "%s%d ", confopts[i], constanttone);
-				break;
-			case 7:
-				sprintf(tmp, "%s%d ", confopts[i], ctonefreq);
-				break;
-			case 8:
-				sprintf(tmp, "%s%d ", confopts[i], fixspeed);
-				break;
-			case 9:
-				sprintf(tmp, "%s%d ", confopts[i], unlimitedattempt);
-				break;
-			case 10:
-				sprintf(tmp, "%s%d ", confopts[i], f6);
-				break;
-			case 11:
-				sprintf(tmp, "%s%f ", confopts[i], edge);
-				break;
-			case 12:
-				sprintf(tmp, "%s%d ", confopts[i], speedstep);
-				break;
-			case 13:
-				sprintf(tmp, "%s%d ", confopts[i], stoponerror);
-				break;
-		}	
+			case 0: written = snprintf(tmp, sizeof(tmp), "%s=%s ", confopts[i], mycall); break;
+			case 1: written = snprintf(tmp, sizeof(tmp), "%s=%s ", confopts[i], cbfilename); break;
+			case 2: written = snprintf(tmp, sizeof(tmp), "%s=%s ", confopts[i], dspdevice); break;
+			case 3: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], initialspeed); break;
+			case 4: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], mincharspeed); break;
+			case 5: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], waveform); break;
+			case 6: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], constanttone); break;
+			case 7: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], ctonefreq); break;
+			case 8: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], fixspeed); break;
+			case 9: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], unlimitedattempt); break;
+			case 10: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], f6); break;
+			case 11: written = snprintf(tmp, sizeof(tmp), "%s=%f ", confopts[i], edge); break;
+			case 12: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], speedstep); break;
+			default: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], stoponerror); break;
+		}
+		if (written < 0 || (size_t)written >= sizeof(tmp)) {
+			fprintf(stderr, "Unable to format config option '%s'.\n", confopts[i]);
+			goto cleanup;
+		}
+		replacement_len = (size_t)written;
+		key_len = strlen(confopts[i]);
 
-		/* Conf option already in rc-file? */
-		if ((find = strstr(conf1, confopts[i])) != NULL) {
-			/* determine length. */
-			findend = find;
-			findend++;	/* starts with \n, always skip it */
-			while (!isspace(*findend++));
-			len = findend - find;
-			
-			/* old size of conf1: conf1len (see above) 
-			 * new size: conf1len - len + strlen(tmp)*/
-			conf2len = conf1len - len + strlen(tmp);
-			conf2 = realloc(conf2, (size_t) conf2len);
-			memcpy(conf2, conf1, (find - conf1));
-			memcpy(conf2 + (find - conf1), tmp, strlen(tmp));
-			memcpy(conf2 + (find - conf1) + strlen(tmp), findend, 
-					(size_t) conf2len - (find - conf1) - strlen(tmp));
-		}
-		/* otherwise, add to the end */
-		else {
-			/* CR LF or LF only? */
-			if (strstr(conf1, "\r")) {
-				strcat(tmp, "\r");
+		find = config;
+		while ((find = strstr(find, confopts[i])) != NULL) {
+			if ((find == config || find[-1] == '\n') && find[key_len] == '=') {
+				break;
 			}
-			strcat(tmp, "\n");
-			conf2len = conf1len + strlen(tmp) - 1;
-			conf2 = realloc(conf2, conf2len);
-			memcpy(conf2, conf1, conf1len-1);  // excl. \0
-			memcpy(conf2 + conf1len - 1, tmp, strlen(tmp)); // (incl. \0)
+			find++;
 		}
-		conf1 = realloc(conf1, (size_t) conf2len);
-		conf1len = conf2len;
-		if (conf1 == NULL) {
-			exit(0);
+
+		if (find != NULL) {
+			findend = find + key_len + 1;
+			while (*findend != '\0' && !isspace((unsigned char)*findend)) {
+				findend++;
+			}
+			find_offset = (size_t)(find - config);
+			findend_offset = (size_t)(findend - config);
+			updated_len = config_len - (findend_offset - find_offset) + replacement_len;
+			updated = malloc(updated_len + 1);
+			if (updated == NULL) {
+				fprintf(stderr, "Out of memory while updating config file.\n");
+				goto cleanup;
+			}
+			memcpy(updated, config, find_offset);
+			memcpy(updated + find_offset, tmp, replacement_len);
+			memcpy(updated + find_offset + replacement_len, findend,
+					config_len - findend_offset + 1);
 		}
-		memcpy(conf1, conf2, conf1len);
+		else {
+			size_t separator_len = config_len != 0 && config[config_len - 1] != '\n' ? 1 : 0;
+			size_t newline_len = use_crlf ? 2 : 1;
+			if (config_len > SIZE_MAX - separator_len - replacement_len - newline_len) {
+				fprintf(stderr, "Config file is too large to update.\n");
+				goto cleanup;
+			}
+			updated_len = config_len + separator_len + replacement_len + newline_len;
+			updated = malloc(updated_len + 1);
+			if (updated == NULL) {
+				fprintf(stderr, "Out of memory while updating config file.\n");
+				goto cleanup;
+			}
+			memcpy(updated, config, config_len);
+			find_offset = config_len;
+			if (separator_len != 0) {
+				updated[find_offset++] = '\n';
+			}
+			memcpy(updated + find_offset, tmp, replacement_len);
+			find_offset += replacement_len;
+			if (use_crlf) {
+				updated[find_offset++] = '\r';
+			}
+			updated[find_offset++] = '\n';
+			updated[find_offset] = '\0';
+		}
+
+		free(config);
+		config = updated;
+		config_len = updated_len;
 	}
 
 	if ((fh = fopen(rcfilename, "wb")) == NULL) {
 		endwin();
-		fprintf(stderr, "Unable to open config file '%s'!\n", rcfilename);
-		exit(EXIT_FAILURE);
+		fprintf(stderr, "Unable to open config file '%s' for writing!\n", rcfilename);
+		goto cleanup;
 	}
+	if (fwrite(config, 1, config_len, fh) != config_len) {
+		fprintf(stderr, "Unable to write config file '%s'!\n", rcfilename);
+		goto cleanup;
+	}
+	if (fclose(fh) != 0) {
+		fh = NULL;
+		fprintf(stderr, "Unable to close config file '%s'!\n", rcfilename);
+		goto cleanup;
+	}
+	fh = NULL;
+	result = 0;
 
-	fwrite(conf1, conf1len, sizeof(char), fh); 
-	fclose(fh);
-
-	free(conf1);
-	free(conf2);
-
-	return 0;
+cleanup:
+	if (fh != NULL) {
+		fclose(fh);
+	}
+	free(config);
+	return result;
 }
 		
 static void thread_fail (int j) {
@@ -1931,51 +2001,97 @@ static void thread_fail (int j) {
 
 /* Add timestamps to toplist file if not there yet */
 static int check_toplist () {
-	char line[80]="";
-	char tmp[80]="";
-	FILE *fh;
-	FILE *fh2;
+	char first_line[35] = "";
+	char *old_data = NULL;
+	char *converted = NULL;
+	FILE *fh = NULL;
+	size_t file_size;
+	size_t old_offset;
+	size_t new_offset;
+	long file_length;
+	int result = -1;
 
-	if ((fh = fopen(tlfilename, "r+")) == NULL) {
+	if ((fh = fopen(tlfilename, "rb")) == NULL) {
 		endwin();
 		perror("Unable to open toplist file 'toplist'!\n");
-		exit(EXIT_FAILURE);
+		return -1;
 	}
 
-	fgets(tmp, 35, fh);
-	
-	rewind(fh);
-	
-	if (strlen(tmp) == 21) {
-			printw("Toplist file in old format. Converting...");
-			strcpy(tmp, "cp -f ");
-			strcat(tmp, tlfilename);
-			strcat(tmp, " /tmp/qrq-toplist");
-			if (system(tmp)) {
-					printw("Failed to copy to /tmp/qrq-toplist\n");
-					getch();
-					endwin();
-					exit(EXIT_FAILURE);
-			}
-
-			fh2 = fopen("/tmp/qrq-toplist", "r+"); 		/* should work ... */
-
-			while ((feof(fh2) == 0) && (fgets(line, 35, fh2) != NULL)) {
-					line[20]=' ';
-					strcpy(tmp, line);
-					strcat(tmp, "1181234567\n");
-					fputs(tmp, fh);
-			}
-			
-			printw(" done!\n");
-	
-			fclose(fh2);
-
+	if (fgets(first_line, sizeof(first_line), fh) == NULL) {
+		if (ferror(fh)) {
+			fprintf(stderr, "Unable to read toplist file %s!\n", tlfilename);
+			goto cleanup;
+		}
+		result = 0;
+		goto cleanup;
+	}
+	if (strlen(first_line) != 21) {
+		result = 0;
+		goto cleanup;
 	}
 
-	fclose(fh);
+	if (fseek(fh, 0, SEEK_END) != 0 || (file_length = ftell(fh)) < 0) {
+		fprintf(stderr, "Unable to determine size of toplist file %s!\n", tlfilename);
+		goto cleanup;
+	}
+	file_size = (size_t)file_length;
+	if (file_size % 21 != 0 || file_size / 21 > SIZE_MAX / 32) {
+		fprintf(stderr, "Invalid old-format toplist file %s!\n", tlfilename);
+		goto cleanup;
+	}
+	if (fseek(fh, 0, SEEK_SET) != 0) {
+		fprintf(stderr, "Unable to rewind toplist file %s!\n", tlfilename);
+		goto cleanup;
+	}
+	old_data = malloc(file_size == 0 ? 1 : file_size);
+	converted = malloc(file_size / 21 * 32);
+	if (old_data == NULL || converted == NULL) {
+		fprintf(stderr, "Out of memory while converting toplist.\n");
+		goto cleanup;
+	}
+	if (file_size != 0 && fread(old_data, 1, file_size, fh) != file_size) {
+		fprintf(stderr, "Unable to read toplist file %s!\n", tlfilename);
+		goto cleanup;
+	}
+	if (fclose(fh) != 0) {
+		fh = NULL;
+		fprintf(stderr, "Unable to close toplist file %s!\n", tlfilename);
+		goto cleanup;
+	}
+	fh = NULL;
 
-	return 0;
+	printw("Toplist file in old format. Converting...");
+	for (old_offset = 0, new_offset = 0; old_offset < file_size;
+			old_offset += 21, new_offset += 32) {
+		memcpy(converted + new_offset, old_data + old_offset, 20);
+		converted[new_offset + 20] = ' ';
+		memcpy(converted + new_offset + 21, "1181234567\n", 11);
+	}
+
+	if ((fh = fopen(tlfilename, "wb")) == NULL) {
+		fprintf(stderr, "Unable to open toplist file %s for writing!\n", tlfilename);
+		goto cleanup;
+	}
+	if (fwrite(converted, 1, file_size / 21 * 32, fh) != file_size / 21 * 32) {
+		fprintf(stderr, "Unable to write toplist file %s!\n", tlfilename);
+		goto cleanup;
+	}
+	if (fclose(fh) != 0) {
+		fh = NULL;
+		fprintf(stderr, "Unable to close toplist file %s!\n", tlfilename);
+		goto cleanup;
+	}
+	fh = NULL;
+	printw(" done!\n");
+	result = 0;
+
+cleanup:
+	if (fh != NULL) {
+		fclose(fh);
+	}
+	free(old_data);
+	free(converted);
+	return result;
 }
 
 
