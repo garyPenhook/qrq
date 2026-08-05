@@ -33,8 +33,9 @@ practice.
   linker fallbacks for older environments.
 - [x] Add Linux, macOS, and MinGW CI.
 - [x] Separate install prefix from packaging `DESTDIR`.
-- [~] Add release archives and current Linux/Windows packaging. A source
-  archive target remains; distributable platform packages need release policy.
+- [~] Add release archives and current Linux/Windows packaging. The source
+  archive is now self-testing after extraction; platform packages still need
+  release policy and signing.
 
 ## Phase 3: Training options
 

@@ -54,7 +54,7 @@ endif
 # build information may be added by CI scripts and will be
 # displayed in the help text (qrq -h)
 
-BUILD_INFO=" Date: $(shell date -r ../ChangeLog +%Y-%m-%dT%H:%M:%S%z)\n git branch/commit: $(shell if [ x${CI_COMMIT_REF_NAME} != x ]; then echo ${CI_COMMIT_REF_NAME} ; elif [ -e .git ] || [ -e ../.git ]; then git symbolic-ref --short HEAD ; else echo not built from git repository ; fi) / $(shell if [ x${CI_COMMIT_SHA} != x ]; then echo ${CI_COMMIT_SHA}; elif [ -e .git ] || [ -e ../.git ] ; then git rev-parse --verify HEAD ; else echo - ; fi )\n by $(USER)@$(shell hostname -f)\n OS: $(shell uname -s -r -p)\n Compiler: $(shell $(CC) --version | head -1)"
+BUILD_INFO=" Date: $(shell if [ -r ../ChangeLog ]; then date -r ../ChangeLog +%Y-%m-%dT%H:%M:%S%z; else date -r ChangeLog +%Y-%m-%dT%H:%M:%S%z; fi)\n git branch/commit: $(shell if [ x${CI_COMMIT_REF_NAME} != x ]; then echo ${CI_COMMIT_REF_NAME} ; elif [ -e .git ] || [ -e ../.git ]; then git symbolic-ref --short HEAD ; else echo not built from git repository ; fi) / $(shell if [ x${CI_COMMIT_SHA} != x ]; then echo ${CI_COMMIT_SHA}; elif [ -e .git ] || [ -e ../.git ] ; then git rev-parse --verify HEAD ; else echo - ; fi )\n by $(USER)@$(shell hostname -f)\n OS: $(shell uname -s -r -p)\n Compiler: $(shell $(CC) --version | head -1)"
 
 # Keep backend definitions when callers add warning, sanitizer, or packaging flags.
 override CFLAGS += -D PREFIX=\"$(PREFIX)\" -D BUILD_INFO=\"$(BUILD_INFO)\" -D VERSION=\"$(VERSION)\" -I.
@@ -210,6 +210,7 @@ dist:
 	cp coreaudio.c coreaudio.h oss.c oss.h \
 		qrq-$(VERSION)
 	cp pulseaudio.h pulseaudio.c qrq-$(VERSION)
+	cp -r tests qrq-$(VERSION)
 	cp -r OSXExtras qrq-$(VERSION)
 	rm -rf qrq-$(VERSION)/OSXExtras/.svn/
 	tar -zcf qrq-$(VERSION).tar.gz qrq-$(VERSION)
