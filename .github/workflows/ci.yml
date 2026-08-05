@@ -121,3 +121,15 @@ jobs:
           name: qrq-windows-x86_64
           path: src/qrq.exe
           if-no-files-found: error
+
+  macos:
+    name: macOS (Core Audio)
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build native macOS executable
+        run: |
+          make -C src clean
+          make -C src USE_PA=NO USE_CA=YES OSX_PLATFORM=YES OSX_BUNDLE=NO all

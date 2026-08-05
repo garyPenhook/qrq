@@ -23,6 +23,8 @@ THE SOFTWARE.
 #include <AudioToolbox/AudioToolbox.h>
 #include <AudioUnit/AudioUnit.h>
 #include <pthread.h>
+#include <stdlib.h>
+#include <string.h>
 
 
 #define kOutputBus 0
@@ -37,7 +39,7 @@ static pthread_mutex_t _playingMutex;
 static pthread_cond_t _playingCond;
 
 
-void write_audio(void* dummy, int* pcm, int size)
+int write_audio(void* dummy, int* pcm, int size)
 {
 
 	_pcm = pcm;
@@ -49,7 +51,7 @@ void write_audio(void* dummy, int* pcm, int size)
 	// block until finished playing
 	pthread_cond_wait(&_playingCond, &_playingMutex);
 	pthread_mutex_unlock(&_playingMutex);
-
+	return 0;
 }
 
 static OSStatus playbackCallback(void *inRefCon, 
@@ -111,9 +113,10 @@ static OSStatus playbackCallback(void *inRefCon,
 	return noErr;
 }
 
-void close_audio(void* cookie)
+int close_audio(void* cookie)
 {
 	AudioOutputUnitStop(*_audioUnit);
+	return 0;
 }
 
 void close_dsp(void* s)
@@ -288,4 +291,3 @@ void* open_dsp(char* dummy)
 //  sleep(2.0);
 //  return 1;
 //}
-
