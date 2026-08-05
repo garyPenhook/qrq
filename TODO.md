@@ -103,7 +103,8 @@ PulseAudio has not been built locally because `pulse/simple.h` and the
    high-score default, with `[` and `]` changing the setting by five calls.
 2. Extract pure scoring, Morse timing, callbase, and configuration modules.
 3. Add unit tests and sanitizer targets.
-4. Add GitHub Actions for GCC, Clang, OSS/no-audio, PulseAudio, and MinGW.
+4. [x] Add GitHub Actions for GCC/Clang and OSS/PulseAudio builds, plus
+   cppcheck. Add MinGW and sanitizer coverage next.
 5. [x] Add independent up/down speed steps; legacy `speedstep` configs remain
    compatible, while `speedupstep` and `speeddownstep` persist separately.
 6. Add missed-item review and adaptive selection.

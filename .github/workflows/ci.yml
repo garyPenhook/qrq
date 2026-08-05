@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.compiler }} / ${{ matrix.audio }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+        audio: [oss, pulseaudio]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential clang libncurses-dev libpulse-dev
+
+      - name: Build
+        run: |
+          make -C src clean
+          if [ "${{ matrix.audio }}" = oss ]; then
+            make -C src USE_PA=NO CC=${{ matrix.compiler }} all
+          else
+            make -C src USE_PA=YES CC=${{ matrix.compiler }} all
+          fi
+
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: qrq-${{ matrix.compiler }}-${{ matrix.audio }}
+          path: src/qrq
+          if-no-files-found: error
+
+  static-analysis:
+    name: Static analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cppcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes cppcheck
+
+      - name: Run cppcheck
+        run: |
+          cppcheck --enable=warning,performance,portability --std=c99 \
+            --platform=unix64 --suppress=missingIncludeSystem --quiet \
+            src/qrq.c src/oss.c src/pulseaudio.c
