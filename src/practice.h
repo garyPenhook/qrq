@@ -22,4 +22,7 @@ int qrq_review_queue_push(struct qrq_review_queue *queue, size_t item);
 int qrq_review_queue_take(struct qrq_review_queue *queue, size_t *item);
 void qrq_review_queue_clear(struct qrq_review_queue *queue);
 
+/* Return a whole-number accuracy percentage, rounded down. */
+int qrq_practice_accuracy(size_t attempts, size_t errors);
+
 #endif

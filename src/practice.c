@@ -88,3 +88,11 @@ void qrq_review_queue_clear(struct qrq_review_queue *queue) {
 	queue->next = 0;
 	queue->capacity = 0;
 }
+
+int qrq_practice_accuracy(size_t attempts, size_t errors) {
+	if (attempts == 0 || errors > attempts) {
+		return 0;
+	}
+	return (int)(((long double)(attempts - errors) * 100.0L) /
+			(long double)attempts);
+}

@@ -147,6 +147,7 @@ static int mincalllength=1;
 static int maxcalllength=CALL_MAX;
 static int adaptiveselection=0;
 static int reviewmisses=0;
+static int accuracytarget=0;
 static int attemptvalid=1;				/* 1 = not using any "cheats" */
 static unsigned long int nrofcalls=0;	
 static int toplist_own=0;               /* show only own call on toplist */
@@ -275,6 +276,9 @@ int main (int argc, char *argv[]) {
 	char tmp[CALL_MAX + 1]="";
 	char input[CALL_MAX + 1]="";
 	size_t selected_index;
+	int completedcalls = 0;
+	int attemptaccuracy;
+	int toplist_score;
 	int i=0,j=0,k=0;						/* counter etc. */
 	int attempt_limit;
 	char previouscall[CALL_MAX + 1]="";
@@ -430,7 +434,7 @@ while (status == 1) {
 	wrefresh(right_w); 
 	
 	/* reset */
-	maxspeed = errornr = score = 0;
+	maxspeed = errornr = score = completedcalls = 0;
 	speed = initialspeed;
 	
 	/* prompt for own callsign */
@@ -625,6 +629,7 @@ while (status == 1) {
 		
 		tmp[0]='\0';
 		score += calc_score(calls[i], input, speed, tmp, f6pressed);
+		completedcalls++;
 		update_score();
 		if (strcmp(tmp, "-")) {			/* made an error */
 			if (call_mistakes[i] != UCHAR_MAX) {
@@ -644,6 +649,11 @@ while (status == 1) {
 	}
 
     close_summary_file();
+	attemptaccuracy = qrq_practice_accuracy((size_t)completedcalls, (size_t)errornr);
+	toplist_score = score;
+	if (accuracytarget != 0 && attemptaccuracy < accuracytarget) {
+		toplist_score = 0;
+	}
 
 	/* attempt is over, send AR */
 	callnr = 0;
@@ -658,11 +668,17 @@ while (status == 1) {
 		thread_fail(j);
 #endif
 	
-	add_to_toplist(mycall, score, maxspeed);
+	add_to_toplist(mycall, toplist_score, maxspeed);
 	
 	curs_set(0);
 	wattron(bot_w,A_BOLD);
-	mvwprintw(bot_w,1,1, "Attempt finished. Press any key to continue!");
+	if (accuracytarget != 0) {
+		mvwprintw(bot_w,1,1, "Accuracy %d%% (goal %d%%). Press any key!",
+				attemptaccuracy, accuracytarget);
+	}
+	else {
+		mvwprintw(bot_w,1,1, "Attempt finished. Press any key to continue!");
+	}
 	wattroff(bot_w,A_BOLD);
 	wrefresh(bot_w);
 	getch();
@@ -750,6 +766,14 @@ while ((j = getch()) != 0) {
 			break;
 		case 'r':
 				reviewmisses = (reviewmisses ? 0 : 1);
+			break;
+		case 'g':
+			if (accuracytarget == 0) accuracytarget = 80;
+			else if (accuracytarget == 80) accuracytarget = 90;
+			else if (accuracytarget == 90) accuracytarget = 95;
+			else if (accuracytarget == 95) accuracytarget = 98;
+			else if (accuracytarget == 98) accuracytarget = 100;
+			else accuracytarget = 0;
 			break;
 		case 'u':
 				unlimitedattempt = (unlimitedattempt ? 0 : 1);
@@ -925,9 +949,9 @@ void update_parameter_dialog (void) {
 		mvwprintw(conf_w,12,2, "Callsign database:     %-15s"
 					"      d (%ld)", basename(cbfilename),nrofcalls);
 	}
-	mvwprintw(conf_w,13,2, "Adaptive*: %-3s Review*: %-3s Stop: %-3s a/r/t",
+	mvwprintw(conf_w,13,2, "Adaptive*: %-3s Review*: %-3s Goal: %-3d%% a/r/g",
 			adaptiveselection ? "yes" : "no", reviewmisses ? "yes" : "no",
-			stoponerror ? "yes" : "no");
+			accuracytarget);
 #ifdef OSS
 	mvwprintw(conf_w,14,2, "DSP device:            %-15s"
 					"      e", dspdevice);
@@ -1770,6 +1794,17 @@ static int read_config (void) {
 			printw("  line  %2d: review misses: %s\n", line,
 					reviewmisses ? "yes" : "no");
 		}
+		else if (tmp == strstr(tmp, "accuracytarget=")) {
+			while (isdigit((unsigned char)(tmp[i] = tmp[15 + i]))) {
+				i++;
+			}
+			tmp[i] = '\0';
+			k = atoi(tmp);
+			if (k == 0 || (k >= 50 && k <= 100)) {
+				accuracytarget = k;
+				printw("  line  %2d: accuracy target: %d%%\n", line, accuracytarget);
+			}
+		}
 		else if (tmp == strstr(tmp, "mincalllength=")) {
 			while (isdigit((unsigned char)(tmp[i] = tmp[15+i]))) {
 				i++;
@@ -2086,7 +2121,8 @@ static int save_config (void) {
 		"mincharspeed", "waveform", "constanttone", "ctonefreq",
 		"fixspeed", "unlimitedattempt", "f6", "risetime", "speedstep",
 		"speedupstep", "speeddownstep", "sessionlength", "mincalllength",
-		"maxcalllength", "stoponerror", "adaptiveselection", "reviewmisses"
+		"maxcalllength", "stoponerror", "adaptiveselection", "reviewmisses",
+		"accuracytarget"
 	};
 	FILE *fh = NULL;
 	char tmp[PATH_MAX + 80];
@@ -2162,7 +2198,8 @@ static int save_config (void) {
 			case 17: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], maxcalllength); break;
 			case 18: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], stoponerror); break;
 			case 19: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], adaptiveselection); break;
-			default: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], reviewmisses); break;
+			case 20: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], reviewmisses); break;
+			default: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], accuracytarget); break;
 		}
 		if (written < 0 || (size_t)written >= sizeof(tmp)) {
 			fprintf(stderr, "Unable to format config option '%s'.\n", confopts[i]);

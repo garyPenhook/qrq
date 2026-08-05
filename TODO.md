@@ -106,14 +106,16 @@ The OSS and PulseAudio backends both build locally.
    macOS/Core Audio builds.
 5. [x] Add independent up/down speed steps; legacy `speedstep` configs remain
    compatible, while `speedupstep` and `speeddownstep` persist separately.
-6. [x] Add missed-item review and adaptive selection. Enable
+6. [x] Add an optional accuracy-target policy. Cycle it with `g` in F5, or
+   set `accuracytarget` to 0 or 50–100 in `qrqrc`.
+7. [x] Add missed-item review and adaptive selection. Enable
    `adaptiveselection=1` to weight difficult calls, or `reviewmisses=1` to
    schedule copied-wrong calls again in the same session.
-7. [~] Add filters for call length, prefixes, digits, portable suffixes, and
+8. [~] Add filters for call length, prefixes, digits, portable suffixes, and
    characters. Length filtering is available through `qrqrc`.
-8. [x] Separate the runtime install prefix from package staging. `PREFIX`
+9. [x] Separate the runtime install prefix from package staging. `PREFIX`
    defaults to `/usr`; `DESTDIR` can now stage a package tree safely.
-9. Future product features—adaptive practice, history analytics, advanced
+10. Future product features—history analytics, advanced
    audio, and terminal UX—are tracked in `ROADMAP.md` and need a product-level
    design decision before implementation.
 9. [x] Add a warning-free strict C17 syntax gate with `-Werror`.

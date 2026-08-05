@@ -24,6 +24,9 @@ adaptiveselection=0
 # repeat incorrectly copied calls later in the current session
 # values: 0 = no, 1 = yes (review sessions are not toplist comparable)
 reviewmisses=0
+# minimum whole-session accuracy for a local toplist entry; 0 disables it
+# values: 0 or 50..100
+accuracytarget=0
 dspdevice=/dev/dsp    # your DSP device, usually /dev/dsp (for OSS only)
 
 # risetime and falltime for shaping the CW sigs (in milliseconds). recommended

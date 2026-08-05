@@ -40,7 +40,9 @@ practice.
 
 - [x] Configurable session lengths instead of a fixed 50/all choice.
 - [x] Independent speed-up and speed-down steps.
-- Accuracy-target and fixed-speed session policies.
+- [x] Accuracy-target and fixed-speed session policies. Fixed speed is
+  retained; `accuracytarget` can require 80–100% accuracy for a local
+  toplist entry.
 - [x] Add a missed-item review queue and error-weighted adaptive selection.
   Both modes are optional per session and excluded from the comparable toplist.
 - [~] Filters for call length, prefixes, digits, portable suffixes, and

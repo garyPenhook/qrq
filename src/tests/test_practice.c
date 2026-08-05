@@ -28,5 +28,10 @@ int main(void) {
 	assert(qrq_review_queue_take(&queue, &item) == 1 && item == 1);
 	assert(qrq_review_queue_take(&queue, &item) == 0);
 	qrq_review_queue_clear(&queue);
+	assert(qrq_practice_accuracy(0, 0) == 0);
+	assert(qrq_practice_accuracy(10, 0) == 100);
+	assert(qrq_practice_accuracy(10, 1) == 90);
+	assert(qrq_practice_accuracy(3, 1) == 66);
+	assert(qrq_practice_accuracy(3, 4) == 0);
 	return 0;
 }
