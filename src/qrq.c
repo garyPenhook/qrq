@@ -175,6 +175,7 @@ static void start_summary_file();
 static void close_summary_file();
 static int validchar(int c);
 static void free_calls(void);
+static int copy_file(const char *source_path, const char *destination_path);
 
 /* The audio worker and ncurses input loop run concurrently.  Do not access
  * this state directly: a plain int (or volatile int) is a data race. */
@@ -2129,6 +2130,43 @@ cleanup:
 
 
 
+static int copy_file(const char *source_path, const char *destination_path) {
+	char buffer[8192];
+	FILE *source = NULL;
+	FILE *destination = NULL;
+	size_t bytes_read;
+	int result = -1;
+
+	source = fopen(source_path, "rb");
+	if (source == NULL) {
+		return -1;
+	}
+	destination = fopen(destination_path, "wb");
+	if (destination == NULL) {
+		goto cleanup;
+	}
+	while ((bytes_read = fread(buffer, 1, sizeof(buffer), source)) != 0) {
+		if (fwrite(buffer, 1, bytes_read, destination) != bytes_read) {
+			goto cleanup;
+		}
+	}
+	if (ferror(source) || fclose(destination) != 0) {
+		destination = NULL;
+		goto cleanup;
+	}
+	destination = NULL;
+	result = 0;
+
+cleanup:
+	if (destination != NULL) {
+		fclose(destination);
+	}
+	if (source != NULL) {
+		fclose(source);
+	}
+	return result;
+}
+
 /* See where our files are. We need 'callbase.qcb', 'qrqrc' and 'toplist'.
  * The can be: 
  * 1) In the current directory -> use them
@@ -2209,38 +2247,22 @@ static int find_files () {
 					exit(EXIT_FAILURE);
 				}
 
-				/* OK, now we created the directory, we can read in
-				 * DESTDIR/local/, so I assume copying files won't cause any
-				 * problem, with system()... */
-
-				strcpy(rcfilename, "install -m 644 ");
-				strcat(rcfilename, tmp_tlfilename);
-				strcat(rcfilename, " ");
-				strcat(rcfilename, homedir);
-				strcat(rcfilename, "/.qrq/ 2> /dev/null");
-				if (system(rcfilename)) {
-					printw("Failed to copy toplist file: %s\n", rcfilename);
+				if (snprintf(tlfilename, sizeof(tlfilename), "%s/.qrq/toplist", homedir) >=
+						(int)sizeof(tlfilename) || copy_file(tmp_tlfilename, tlfilename) != 0) {
+					printw("Failed to copy toplist file.\n");
 					getch();
 					endwin();
 					exit(EXIT_FAILURE);
 				}
-				strcpy(rcfilename, "install -m 644 ");
-				strcat(rcfilename, tmp_rcfilename);
-				strcat(rcfilename, " ");
-				strcat(rcfilename, homedir);
-				strcat(rcfilename, "/.qrq/ 2> /dev/null");
-				if (system(rcfilename)) {
-					printw("Failed to copy qrqrc file: %s\n", rcfilename);
+				if (snprintf(rcfilename, sizeof(rcfilename), "%s/.qrq/qrqrc", homedir) >=
+						(int)sizeof(rcfilename) || copy_file(tmp_rcfilename, rcfilename) != 0) {
+					printw("Failed to copy qrqrc file.\n");
 					getch();
 					endwin();
 					exit(EXIT_FAILURE);
 				}
 				printw("Files copied. You might want to edit "
 						"qrqrc according to your needs.\n");
-				strcpy(rcfilename, homedir);
-				strcat(rcfilename, "/.qrq/qrqrc");
-				strcpy(tlfilename, homedir);
-				strcat(tlfilename, "/.qrq/toplist");
 				strcpy(cbfilename, tmp_cbfilename);
                 strcpy(sumfilepath, homedir);
                 strcat(sumfilepath, "/.qrq/Summary");
