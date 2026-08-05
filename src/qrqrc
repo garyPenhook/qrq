@@ -60,6 +60,10 @@ ctonefreq=600
 # output volume as a percentage (0..100)
 volume=100
 
+# random sidetone range when constanttone=0
+minpitch=500
+maxpitch=900
+
 # allow unlimited usage of F6
 # values: 0 = no, 1 = yes
 f6=0   

@@ -144,6 +144,8 @@ static int j=0;							/* counter etc. */
 static int constanttone=0;              /* if 1 don't change the pitch */
 static int ctonefreq=800;               /* if constanttone=1 use this freq */
 static int volume=100;                  /* output gain as a percentage */
+static int minpitch=500;
+static int maxpitch=900;
 static int f6=0;						/* f6 = 1: allow unlimited repeats */
 static int fixspeed=0;					/* keep speed fixed, regardless of err*/
 static int unlimitedattempt=0;			/* attempt with all calls  of the DB */
@@ -571,8 +573,8 @@ while (status == 1) {
 
 		/* output frequency handling a) random b) fixed */
 		if ( constanttone == 0 ) {
-				/* random freq, fraction of samplerate */
-				freq = (int) (samplerate/(50+(40.0*rand()/(RAND_MAX+1.0))));
+				freq = minpitch + (int)((unsigned int)rand() %
+						(unsigned int)(maxpitch - minpitch + 1));
 		}
 		else { /* fixed frequency */
 				freq = ctonefreq;
@@ -1813,6 +1815,14 @@ static int read_config (void) {
 				printw("  line  %2d: volume: %d%%\n", line, volume);
 			}
 		}
+		else if (tmp == strstr(tmp, "minpitch=")) {
+			k = atoi(tmp + 9);
+			if (k >= 100 && k <= maxpitch) minpitch = k;
+		}
+		else if (tmp == strstr(tmp, "maxpitch=")) {
+			k = atoi(tmp + 9);
+			if (k >= minpitch && k <= 4000) maxpitch = k;
+		}
 		else if (tmp == strstr(tmp, "f6=")) {
 			f6=0;
 			if (tmp[3] == '1') {
@@ -2239,7 +2249,7 @@ static int save_config (void) {
 		"speedupstep", "speeddownstep", "sessionlength", "mincalllength",
 		"maxcalllength", "stoponerror", "adaptiveselection", "reviewmisses",
 		"accuracytarget", "callprefixes", "digitmode", "portablemode",
-		"allowedchars", "sessionseed", "volume"
+		"allowedchars", "sessionseed", "volume", "minpitch", "maxpitch"
 	};
 	FILE *fh = NULL;
 	char tmp[PATH_MAX + 80];
@@ -2322,7 +2332,9 @@ static int save_config (void) {
 			case 24: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], portablemode); break;
 			case 25: written = snprintf(tmp, sizeof(tmp), "%s=%s ", confopts[i], allowedchars); break;
 			case 26: written = snprintf(tmp, sizeof(tmp), "%s=%u ", confopts[i], sessionseed); break;
-			default: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], volume); break;
+			case 27: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], volume); break;
+			case 28: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], minpitch); break;
+			default: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], maxpitch); break;
 		}
 		if (written < 0 || (size_t)written >= sizeof(tmp)) {
 			fprintf(stderr, "Unable to format config option '%s'.\n", confopts[i]);
