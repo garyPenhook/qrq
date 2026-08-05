@@ -94,11 +94,13 @@ typedef void *AUDIO_HANDLE;
 
 #include "score.h"
 #include "callbase.h"
+#include "practice.h"
 
 /* callsign array will be dynamically allocated */
 static char **calls = NULL;
 static size_t calls_allocated = 0;
 static unsigned char *call_used = NULL;
+static unsigned char *call_mistakes = NULL;
 static struct qrq_callbase loaded_callbase = {0};
 
 static const char *codetable[] = {
@@ -142,6 +144,7 @@ static int unlimitedattempt=0;			/* attempt with all calls  of the DB */
 static int sessionlength=50;				/* calls per standard practice session */
 static int mincalllength=1;
 static int maxcalllength=CALL_MAX;
+static int adaptiveselection=0;
 static int attemptvalid=1;				/* 1 = not using any "cheats" */
 static unsigned long int nrofcalls=0;	
 static int toplist_own=0;               /* show only own call on toplist */
@@ -320,7 +323,7 @@ int main (int argc, char *argv[]) {
 	read_config();
 
 	attemptvalid = 1;
-	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50) {
+	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection) {
 		attemptvalid = 0;	
 	}
 
@@ -509,9 +512,12 @@ while (status == 1) {
 		pthread_join(cwthread, NULL);
 #endif	
 		/* select an unused callsign from the calls-array */
-		do {
-			i = (int) ((float) nrofcalls*rand()/(RAND_MAX+1.0));
-		} while (call_used[i] != 0);
+		i = (int)qrq_practice_choose((size_t)nrofcalls, call_used,
+				call_mistakes, adaptiveselection, (uint32_t)rand());
+		if (i < 0) {
+			fprintf(stderr, "No unused callbase entries remain.\n");
+			break;
+		}
 
 		/* output frequency handling a) random b) fixed */
 		if ( constanttone == 0 ) {
@@ -608,6 +614,9 @@ while (status == 1) {
 		score += calc_score(calls[i], input, speed, tmp, f6pressed);
 		update_score();
 		if (strcmp(tmp, "-")) {			/* made an error */
+			if (call_mistakes[i] != UCHAR_MAX) {
+				call_mistakes[i]++;
+			}
 				show_error(calls[i], tmp);
                 if (stoponerror)
                     getch();
@@ -720,6 +729,9 @@ while ((j = getch()) != 0) {
 		case 't':
 				stoponerror = (stoponerror ? 0 : 1);
 			break;
+		case 'a':
+				adaptiveselection = (adaptiveselection ? 0 : 1);
+			break;
 		case 'u':
 				unlimitedattempt = (unlimitedattempt ? 0 : 1);
 			break;
@@ -830,7 +842,7 @@ while ((j = getch()) != 0) {
 	speed = initialspeed;
 
 	attemptvalid = 1;
-	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50) {
+	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection) {
 		attemptvalid = 0;	
 	}
 
@@ -894,8 +906,8 @@ void update_parameter_dialog (void) {
 		mvwprintw(conf_w,12,2, "Callsign database:     %-15s"
 					"      d (%ld)", basename(cbfilename),nrofcalls);
 	}
-	mvwprintw(conf_w,13,2, "Stop on error:         %-3s"
-                    "                  t", (stoponerror ? "yes" : "no"));
+	mvwprintw(conf_w,13,2, "Adaptive selection*:   %-3s  Stop on error: %-3s a/t",
+			adaptiveselection ? "yes" : "no", stoponerror ? "yes" : "no");
 #ifdef OSS
 	mvwprintw(conf_w,14,2, "DSP device:            %-15s"
 					"      e", dspdevice);
@@ -1728,6 +1740,11 @@ static int read_config (void) {
 						line, tmp, sessionlength);
 			}
         }
+		else if (tmp == strstr(tmp, "adaptiveselection=")) {
+			adaptiveselection = tmp[18] == '1';
+			printw("  line  %2d: adaptive selection: %s\n", line,
+					adaptiveselection ? "yes" : "no");
+		}
 		else if (tmp == strstr(tmp, "mincalllength=")) {
 			while (isdigit((unsigned char)(tmp[i] = tmp[15+i]))) {
 				i++;
@@ -2044,7 +2061,7 @@ static int save_config (void) {
 		"mincharspeed", "waveform", "constanttone", "ctonefreq",
 		"fixspeed", "unlimitedattempt", "f6", "risetime", "speedstep",
 		"speedupstep", "speeddownstep", "sessionlength", "mincalllength",
-		"maxcalllength", "stoponerror"
+		"maxcalllength", "stoponerror", "adaptiveselection"
 	};
 	FILE *fh = NULL;
 	char tmp[PATH_MAX + 80];
@@ -2118,7 +2135,8 @@ static int save_config (void) {
 			case 15: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], sessionlength); break;
 			case 16: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], mincalllength); break;
 			case 17: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], maxcalllength); break;
-			default: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], stoponerror); break;
+			case 18: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], stoponerror); break;
+			default: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], adaptiveselection); break;
 		}
 		if (written < 0 || (size_t)written >= sizeof(tmp)) {
 			fprintf(stderr, "Unable to format config option '%s'.\n", confopts[i]);
@@ -2631,6 +2649,8 @@ static int statistics (void) {
 static void free_calls(void) {
 	free(call_used);
 	call_used = NULL;
+	free(call_mistakes);
+	call_mistakes = NULL;
 	qrq_callbase_free(&loaded_callbase);
 	calls = loaded_callbase.items;
 	calls_allocated = 0;
@@ -2648,7 +2668,8 @@ static int read_callbase(void) {
 	calls = loaded_callbase.items;
 	calls_allocated = loaded_callbase.count;
 	call_used = calloc(calls_allocated, sizeof(*call_used));
-	if (call_used == NULL) {
+	call_mistakes = calloc(calls_allocated, sizeof(*call_mistakes));
+	if (call_used == NULL || call_mistakes == NULL) {
 		free_calls();
 		endwin();
 		fprintf(stderr, "Error: Couldn't allocate call usage state.\n");

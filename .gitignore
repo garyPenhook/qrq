@@ -5,4 +5,5 @@ releases
 src/qrq
 src/test_score
 src/test_callbase
+src/test_practice
 src/test_callbase.qcb

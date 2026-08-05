@@ -18,6 +18,9 @@ sessionlength=50
 # limit practice to entries within this character range (1..28)
 mincalllength=1
 maxcalllength=28
+# favor entries copied incorrectly during the current session
+# values: 0 = no, 1 = yes (adaptive sessions are not toplist comparable)
+adaptiveselection=0
 dspdevice=/dev/dsp    # your DSP device, usually /dev/dsp (for OSS only)
 
 # risetime and falltime for shaping the CW sigs (in milliseconds). recommended

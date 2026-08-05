@@ -41,7 +41,9 @@ practice.
 - [x] Configurable session lengths instead of a fixed 50/all choice.
 - [x] Independent speed-up and speed-down steps.
 - Accuracy-target and fixed-speed session policies.
-- Missed-item review queue and error-weighted adaptive selection.
+- [~] Missed-item review queue and error-weighted adaptive selection.
+  Error-weighted selection is now available per session; a dedicated review
+  queue remains.
 - [~] Filters for call length, prefixes, digits, portable suffixes, and
   characters. Length filtering is available through `qrqrc`.
 - Seeded sessions for repeatable challenges.
