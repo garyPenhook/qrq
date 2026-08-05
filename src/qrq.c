@@ -2305,15 +2305,57 @@ static int statistics () {
 
 		FILE *fh;
 		FILE *fh2;
+#ifndef WIN32
+		int plot_pipe[2];
+		pid_t gnuplot_pid;
+#endif
 		
 		if ((fh = fopen(tlfilename, "r")) == NULL) {
 				fprintf(stderr, "Unable to open toplist.");
-				exit(0);
+				return -1;
 		}
-		
-		if ((fh2 = fopen("/tmp/qrq-plot", "w+")) == NULL) {
-				fprintf(stderr, "Unable to open /tmp/qrq-plot.");
-				exit(0);
+
+#ifdef WIN32
+		/* _popen supplies gnuplot with the script on standard input. */
+		fh2 = _popen("start /B gnuplot -p", "w");
+#else
+		if (pipe(plot_pipe) != 0) {
+				fclose(fh);
+				fprintf(stderr, "Unable to create gnuplot pipe.\n");
+				return -1;
+		}
+		gnuplot_pid = fork();
+		if (gnuplot_pid == 0) {
+				int null_fd = open("/dev/null", O_WRONLY);
+				close(plot_pipe[1]);
+				if (dup2(plot_pipe[0], STDIN_FILENO) == -1 ||
+						(null_fd != -1 && dup2(null_fd, STDERR_FILENO) == -1)) {
+					_exit(EXIT_FAILURE);
+				}
+				close(plot_pipe[0]);
+				if (null_fd != -1) {
+					close(null_fd);
+				}
+				execlp("gnuplot", "gnuplot", "-p", (char *)NULL);
+				_exit(EXIT_FAILURE);
+		}
+		if (gnuplot_pid < 0) {
+				close(plot_pipe[0]);
+				close(plot_pipe[1]);
+				fclose(fh);
+				fprintf(stderr, "Unable to start gnuplot.\n");
+				return -1;
+		}
+		close(plot_pipe[0]);
+		fh2 = fdopen(plot_pipe[1], "w");
+#endif
+		if (fh2 == NULL) {
+#ifndef WIN32
+			close(plot_pipe[1]);
+#endif
+				fclose(fh);
+				fprintf(stderr, "Unable to open gnuplot input.\n");
+				return -1;
 		}
 
 		fprintf(fh2, "set yrange [0:]\nset xlabel \"Date/Time\"\n"
@@ -2337,10 +2379,20 @@ static int statistics () {
 		
 		fprintf(fh2, "end\npause 10000");
 
-		fclose(fh);
-		fclose(fh2);
-
-		system("gnuplot -p /tmp/qrq-plot 2> /dev/null &");
+		if (fclose(fh) != 0) {
+			fprintf(stderr, "Unable to close toplist.\n");
+		}
+#ifdef WIN32
+		if (_pclose(fh2) == -1) {
+			fprintf(stderr, "Unable to close gnuplot input.\n");
+			return -1;
+		}
+#else
+		if (fclose(fh2) != 0) {
+			fprintf(stderr, "Unable to close gnuplot input.\n");
+			return -1;
+		}
+#endif
 	return 0;
 }
 

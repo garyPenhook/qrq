@@ -6,17 +6,16 @@ This file is the operational handoff for continuing work on
 ## Repository state
 
 - Working directory: `/home/gary/apps/qrq-master`
-- Current branch: `modernize/upstream-sync`
+- Current branch: `master`
 - Original fork commit: `4e673e4c70d52d207a23e5ef2240e54bb6aa82d2`
 - Imported upstream commit: `6174eeebec97cf56a041663cd1558beddee75b36`
 - Local baseline commit: `c590cd2845cd255884af2868d1653037c6a6c963`
 - Audio/callbase hardening commit: `be3b586b8ba33e759e863c86d93514cd4d2fa4ec`
 - `origin`: `https://github.com/garyPenhook/qrq.git`
 - `upstream`: `https://git.fkurz.net/dj1yfk/qrq.git`
-- No local commits have been pushed.
-- The original `master` branch remains at the untouched QRQ 0.3.1 commit.
+- Published to `origin/master` through `317aef9`.
 
-Important: do not discard or overwrite the staged tree. Upstream and the
+Important: do not discard or overwrite unrelated local work. Upstream and the
 fork have unrelated Git histories, so the upstream tree was applied on top of
 the fork commit as a reviewable content update. Upstream also moved program
 sources into `src/` and removed the obsolete in-tree Debian packaging.
@@ -79,9 +78,9 @@ PulseAudio has not been built locally because `pulse/simple.h` and the
 5. [x] Fix callbase ownership. `read_callbase()` now tracks allocated rows,
    frees every string on reload, and safely cleans up after a partial
    allocation failure.
-6. [ ] Replace the remaining shell-based copies and fixed `/tmp/qrq-plot`
-   path with direct file I/O and securely created temporary files. The
-   toplist migration no longer uses `system()` or `/tmp/qrq-toplist`.
+6. [x] Replace shell-based copies and fixed temporary paths. Startup copying
+   now uses internal I/O; old-toplist conversion no longer uses `system()` or
+   `/tmp/qrq-toplist`; statistics streams its script directly to `gnuplot`.
 7. [x] Repair config/toplist allocation and short-I/O handling. The focused
    C99 `cppcheck` pass is clean after rewriting the config writer, score
    insertion, and old-toplist conversion.
