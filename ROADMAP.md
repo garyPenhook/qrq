@@ -17,11 +17,12 @@ practice.
 ## Phase 1: Correctness and safety
 
 - [x] Replace fixed-size audio generation buffers with a capacity-checked buffer.
-- Remove the audio-completion data race and define thread ownership clearly.
-- Check allocation, audio, file, and thread errors consistently.
-- Replace shell-based file copies and predictable temporary files.
+- [x] Remove the audio-completion data race and define thread ownership clearly.
+- [x] Check allocation, audio, file, and thread errors consistently.
+- [x] Replace shell-based file copies and predictable temporary files.
 - [x] Make config and score updates atomic and migrate existing user data safely.
-- Add focused tests for scoring, Morse timing, callbase parsing, and config I/O.
+- [~] Add focused tests for scoring, Morse timing, callbase parsing, and config I/O.
+  Scoring and callbase parsing are covered; timing and config I/O remain.
 
 ## Phase 2: Build and release engineering
 
@@ -30,9 +31,10 @@ practice.
 - [x] Add a warning-free strict C17 syntax check.
 - [x] Detect ncurses and audio dependencies with `pkg-config`, retaining
   linker fallbacks for older environments.
-- Add Linux, macOS, and MinGW CI.
-- Separate install prefix from packaging `DESTDIR`.
-- Add release archives and current Linux/Windows packaging.
+- [x] Add Linux, macOS, and MinGW CI.
+- [x] Separate install prefix from packaging `DESTDIR`.
+- [~] Add release archives and current Linux/Windows packaging. A source
+  archive target remains; distributable platform packages need release policy.
 
 ## Phase 3: Training options
 

@@ -13,7 +13,8 @@ This file is the operational handoff for continuing work on
 - Audio/callbase hardening commit: `be3b586b8ba33e759e863c86d93514cd4d2fa4ec`
 - `origin`: `https://github.com/garyPenhook/qrq.git`
 - `upstream`: `https://git.fkurz.net/dj1yfk/qrq.git`
-- Published to `origin/master` through `caee299`.
+- Published to `origin/master` through `caee299`; later local commits are
+  intentionally awaiting the next explicit publication request.
 
 Important: do not discard or overwrite unrelated local work. Upstream and the
 fork have unrelated Git histories, so the upstream tree was applied on top of
@@ -95,19 +96,24 @@ The OSS and PulseAudio backends both build locally.
 1. [x] Add configurable session lengths; 50 calls remains the comparable
    high-score default, with `[` and `]` changing the setting by five calls.
 2. [~] Extract pure scoring, Morse timing, callbase, and configuration modules.
-   Scoring now lives in `src/score.c`; timing, callbase, and config remain.
+   Scoring and callbase parsing now live in focused modules; timing and config
+   remain in the UI module.
 3. [~] Add unit tests and sanitizer targets. Scoring tests run in CI alongside
    the existing sanitizer smoke test; callbase parsing and filters are covered
    too.
 4. [x] Add GitHub Actions for GCC/Clang and OSS/PulseAudio builds, plus
-   cppcheck and an ASan/UBSan smoke test. Add MinGW coverage next.
+   cppcheck and an ASan/UBSan smoke test. CI now also covers MinGW/MSYS2 and
+   macOS/Core Audio builds.
 5. [x] Add independent up/down speed steps; legacy `speedstep` configs remain
    compatible, while `speedupstep` and `speeddownstep` persist separately.
 6. Add missed-item review and adaptive selection.
 7. [~] Add filters for call length, prefixes, digits, portable suffixes, and
    characters. Length filtering is available through `qrqrc`.
-8. Continue with statistics, terminal resize support, packaging, and advanced
-   audio modes from `ROADMAP.md`.
+8. [x] Separate the runtime install prefix from package staging. `PREFIX`
+   defaults to `/usr`; `DESTDIR` can now stage a package tree safely.
+9. Future product features—adaptive practice, history analytics, advanced
+   audio, and terminal UX—are tracked in `ROADMAP.md` and need a product-level
+   design decision before implementation.
 9. [x] Add a warning-free strict C17 syntax gate with `-Werror`.
 
 ## Useful inspection commands
