@@ -175,6 +175,7 @@ static int attemptvalid=1;				/* 1 = not using any "cheats" */
 static size_t nrofcalls=0;
 static int toplist_own=0;               /* show only own call on toplist */
 static int call_maxlen = 0;				/* maximum length of a callsign/word from current database */
+static int parameter_page = 0;
 #ifndef WIN32
 static volatile sig_atomic_t resize_pending = 0;
 #endif
@@ -205,7 +206,10 @@ static int tonegen(int freq, int length, int waveform);
 static MORSE_THREAD_RETURN morse(void *arg);
 static int add_to_buf(const void *data, size_t size);
 static double qrn_sample(void);
-static int readline(WINDOW *win, int y, int x, char *line, int capitals, int len); 
+static int readline(WINDOW *win, int y, int x, char *line, int capitals,
+		size_t capacity, int display_width, int path_mode);
+static void draw_input_line(WINDOW *win, int y, int x, const char *line,
+		int display_width);
 static WINDOW *create_window(int height, int width, int y, int x);
 static void start_morse_thread(const char *text);
 static void wait_morse_thread(void);
@@ -551,7 +555,7 @@ while (status == 1) {
 	speed = initialspeed;
 	
 	/* prompt for own callsign */
-	i = readline(bot_w, 1, 30, mycall, CAPITALS_ON, 8);
+	i = readline(bot_w, 1, 30, mycall, CAPITALS_ON, sizeof(mycall), 8, 0);
 
 	/* F5 -> Configure sound */
 	if (i == 5) {
@@ -664,7 +668,8 @@ while (status == 1) {
 		
 		f6pressed=0;
 
-		while (!abort && (j = readline(bot_w, 1, 8, input, CAPITALS_ON, CALL_MAX)) > 4) {/* F5..F10 pressed */
+		while (!abort && (j = readline(bot_w, 1, 8, input, CAPITALS_ON,
+				sizeof(input), CALL_MAX, 0)) > 4) {/* F5..F10 pressed */
 
 			switch (j) {
 				case 6:		/* repeat call */
@@ -787,16 +792,109 @@ while (status == 1) {
 void parameter_dialog (void) {
 
 int j = 0;
+	int handled;
 
 
 	/* Configuration values are read by the audio worker.  Join it before
 	 * displaying or changing those values, and after each F6 sample. */
 	wait_morse_thread();
+	parameter_page = 0;
 update_parameter_dialog();
 
 while ((j = getch()) != 0) {
+	handled = 0;
+	if (j == '\t') {
+		parameter_page = (parameter_page + 1) % 3;
+		handled = 1;
+	} else if (parameter_page == 1) {
+		switch (j) {
+			case 'v': volume = volume >= 5 ? volume - 5 : 0; handled = 1; break;
+			case 'V': volume = volume <= 95 ? volume + 5 : 100; handled = 1; break;
+			case 'n': qrnlevel = qrnlevel >= 5 ? qrnlevel - 5 : 0; handled = 1; break;
+			case 'N': qrnlevel = qrnlevel <= 95 ? qrnlevel + 5 : 100; handled = 1; break;
+			case 'h':
+				if (minpitch < maxpitch) {
+					minpitch = minpitch <= maxpitch - 10 ? minpitch + 10 : maxpitch;
+				}
+				handled = 1;
+				break;
+			case 'H': if (minpitch > 100) minpitch -= 10; handled = 1; break;
+			case 'j': if (maxpitch < 4000) maxpitch += 10; handled = 1; break;
+			case 'J':
+				if (maxpitch > minpitch) {
+					maxpitch = maxpitch >= minpitch + 10 ? maxpitch - 10 : minpitch;
+				}
+				handled = 1;
+				break;
+#ifdef OSS
+			case 'e':
+				p = 0;
+				readline(conf_w, 8, 25, dspdevice, CAPITALS_OFF,
+						sizeof(dspdevice), 27, 1);
+				if (dspdevice[0] == '\0') {
+					strcpy(dspdevice, "/dev/dsp");
+				}
+				p = 0;
+				handled = 1;
+				break;
+#endif
+		}
+	} else if (parameter_page == 2) {
+		switch (j) {
+			case '1': if (mincalllength > 1) mincalllength--; handled = 1; break;
+			case '2': if (mincalllength < maxcalllength) mincalllength++; handled = 1; break;
+			case '3': if (maxcalllength > mincalllength) maxcalllength--; handled = 1; break;
+			case '4': if (maxcalllength < CALL_MAX) maxcalllength++; handled = 1; break;
+			case 'i': digitmode = (digitmode + 1) % 3; handled = 1; break;
+			case 'p': portablemode = (portablemode + 1) % 3; handled = 1; break;
+			case 'd':
+				if (!callnr) {
+					curs_set(1);
+					callbase_dialog();
+				}
+				handled = 1;
+				break;
+			case 'x':
+				p = 0;
+				readline(conf_w, 6, 25, callprefixes, CAPITALS_ON,
+						sizeof(callprefixes), 25, 0);
+				p = 0;
+				handled = 1;
+				break;
+			case 'y':
+				p = 0;
+				readline(conf_w, 7, 25, allowedchars, CAPITALS_ON,
+						sizeof(allowedchars), 25, 0);
+				p = 0;
+				handled = 1;
+				break;
+			case 'z': {
+				char seed_text[16];
+				unsigned int parsed_seed;
 
-	switch ((int) j) {
+				if (callnr) {
+					handled = 1;
+					break;
+				}
+				(void)snprintf(seed_text, sizeof(seed_text), "%u", sessionseed);
+				p = 0;
+				readline(conf_w, 8, 25, seed_text, CAPITALS_OFF,
+						sizeof(seed_text), 15, 0);
+				if (qrq_config_parse_uint(seed_text, &parsed_seed) == 0) {
+					sessionseed = parsed_seed;
+				}
+				p = 0;
+				handled = 1;
+				break;
+			}
+		}
+	}
+	if (!handled && parameter_page != 0 && j != KEY_F(2) &&
+			j != KEY_F(6) && j != KEY_F(10) && j != KEY_F(3)) {
+		handled = 1;
+	}
+
+	if (!handled) switch ((int) j) {
 		case '+':							/* rise/falltime */
 			if (edge <= 9.0) {
 				edge += 0.1;
@@ -913,7 +1011,7 @@ while ((j = getch()) != 0) {
 			}
 			break;
 		case 'c':
-			readline(conf_w, 6, 25, mycall, CAPITALS_ON, 8);
+			readline(conf_w, 6, 25, mycall, CAPITALS_ON, sizeof(mycall), 8, 0);
 			if (strlen(mycall) == 0) {
 				strcpy(mycall, "NOCALL");
 			}
@@ -924,7 +1022,8 @@ while ((j = getch()) != 0) {
 			break;
 #ifdef OSS
 		case 'e':
-			readline(conf_w, 12, 25, dspdevice, CAPITALS_OFF, 14);
+			readline(conf_w, 14, 25, dspdevice, CAPITALS_OFF,
+					sizeof(dspdevice), 27, 1);
 			if (strlen(dspdevice) == 0) {
 				strcpy(dspdevice, "/dev/dsp");
 			}
@@ -938,8 +1037,11 @@ while ((j = getch()) != 0) {
 			}
 			break;
 		case KEY_F(2):
-			save_config();	
-			mvwprintw(conf_w,15,23, "  Config saved!");
+			if (save_config() == 0) {
+				mvwprintw(conf_w,15,23, "  Config saved! ");
+			} else {
+				mvwprintw(conf_w,15,23, "  Save failed!  ");
+			}
 			wrefresh(conf_w);
 #ifdef WIN32
 			Sleep(1000);
@@ -971,7 +1073,11 @@ while ((j = getch()) != 0) {
 		speed = initialspeed;
 	}
 
-	attemptvalid = 1;
+	/* Once a running session uses a non-comparable option, changing the
+	 * option back must not make that session eligible again. */
+	if (!callnr) {
+		attemptvalid = 1;
+	}
 	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses || sessionseed != 0) {
 		attemptvalid = 0;	
 	}
@@ -989,6 +1095,7 @@ while ((j = getch()) != 0) {
 
 
 void update_parameter_dialog (void) {
+	static const char *const filter_mode_names[] = {"any", "required", "excluded"};
 	char session_value[16];
 
 	clear_parameter_display();
@@ -1006,8 +1113,57 @@ void update_parameter_dialog (void) {
 
 	mvwaddstr(inf_w,1,1, "                                                         ");
 	curs_set(0);
+	if (parameter_page == 1) {
+		wattron(conf_w, A_BOLD);
+		mvwaddstr(conf_w, 1, 1, "Configuration 2/3: Audio       Value       Change");
+		mvwprintw(conf_w, 15, 2, "F6                   F2                F10");
+		wattroff(conf_w, A_BOLD);
+		mvwprintw(conf_w, 2, 2, "Output volume:              %3d %%       v/V -/+", volume);
+		mvwprintw(conf_w, 3, 2, "QRN noise level:            %3d %%       n/N -/+", qrnlevel);
+		mvwprintw(conf_w, 4, 2, "Random pitch minimum:      %4d Hz      H/h -/+", minpitch);
+		mvwprintw(conf_w, 5, 2, "Random pitch maximum:      %4d Hz      J/j -/+", maxpitch);
+		mvwprintw(conf_w, 6, 2, "Audio sample rate:       %6ld Hz      qrqrc", samplerate);
+		mvwprintw(conf_w, 7, 2, "Rise/fall and waveform controls are on page 1.");
+#ifdef OSS
+		mvwprintw(conf_w, 8, 2, "DSP device: %-27.27s e", dspdevice);
+#endif
+		mvwprintw(conf_w, 15, 4, ": Play CW sample");
+		mvwprintw(conf_w, 15, 25, ": Save config");
+		mvwprintw(conf_w, 15, 44, ": Exit");
+		mvwaddstr(inf_w, 1, 1, "Tab: next settings page   lowercase/uppercase: -/+");
+		wrefresh(conf_w);
+		wrefresh(inf_w);
+		return;
+	}
+	if (parameter_page == 2) {
+		wattron(conf_w, A_BOLD);
+		mvwaddstr(conf_w, 1, 1, "Configuration 3/3: Call filters       Value / Change");
+		mvwprintw(conf_w, 15, 2, "F6                   F2                F10");
+		wattroff(conf_w, A_BOLD);
+		mvwprintw(conf_w, 2, 2, "Minimum call length:      %2d       1/2 -/+", mincalllength);
+		mvwprintw(conf_w, 3, 2, "Maximum call length:      %2d       3/4 -/+", maxcalllength);
+		mvwprintw(conf_w, 4, 2, "Digits:                   %-8s i cycle",
+				filter_mode_names[digitmode]);
+		mvwprintw(conf_w, 5, 2, "Portable suffix:          %-8s p cycle",
+				filter_mode_names[portablemode]);
+		mvwprintw(conf_w, 6, 2, "Call prefixes: %-25.25s x", callprefixes[0] ? callprefixes : "(any)");
+		mvwprintw(conf_w, 7, 2, "Allowed chars: %-25.25s y", allowedchars[0] ? allowedchars : "(any)");
+		mvwprintw(conf_w, 8, 2, "Session seed*:            %-10u %s", sessionseed,
+				callnr ? "next session" : "z");
+		if (!callnr) {
+			mvwprintw(conf_w, 9, 2, "Callsign database: %-24.24s d", basename(cbfilename));
+		}
+		mvwprintw(conf_w, 11, 2, "Filters take effect when the next session loads.");
+		mvwprintw(conf_w, 15, 4, ": Play CW sample");
+		mvwprintw(conf_w, 15, 25, ": Save config");
+		mvwprintw(conf_w, 15, 44, ": Exit");
+		mvwaddstr(inf_w, 1, 1, "Tab: next settings page   * Toplist-ineligible");
+		wrefresh(conf_w);
+		wrefresh(inf_w);
+		return;
+	}
 	wattron(conf_w,A_BOLD);
-	mvwaddstr(conf_w,1,1, "Configuration:          Value                Change");
+	mvwaddstr(conf_w,1,1, "Configuration 1/3:      Value                Change");
 	mvwprintw(conf_w,15,2, "F6                   F2                F10");
 	wattroff(conf_w, A_BOLD);
 	mvwprintw(conf_w,2,2, "Initial Speed:         %3d CpM / %3d WpM" 
@@ -1049,7 +1205,7 @@ void update_parameter_dialog (void) {
 	mvwprintw(conf_w,15,4, ": Play CW sample");
 	mvwprintw(conf_w,15,25, ": Save config");
 	mvwprintw(conf_w,15,44, ": Exit");
-	mvwprintw(inf_w,1,1, "* Toplist-ineligible     Speed/step maximum: %d",
+	mvwprintw(inf_w,1,1, "Tab: next page  * Ineligible  Speed maximum: %d",
 			QRQ_SPEED_MAX);
 	wrefresh(conf_w);
 	wrefresh(inf_w);
@@ -1098,12 +1254,35 @@ void callbase_dialog (void) {
 
 
 
-/* reads a callsign etc. in *win at y/x and writes it to *line */
+/* Draw a bounded horizontal viewport around the shared input cursor. */
+static void draw_input_line(WINDOW *win, int y, int x, const char *line,
+		int display_width) {
+	size_t line_length = strlen(line);
+	size_t view_start = 0;
 
-static int readline(WINDOW *win, int y, int x, char *line, int capitals, int len) {
+	if (p < 0) p = 0;
+	if ((size_t)p > line_length) p = (int)line_length;
+	if (p >= display_width) {
+		view_start = (size_t)(p - display_width + 1);
+	}
+	for (int column = 0; column < display_width; ++column) {
+		mvwaddch(win, y, x + column, ' ');
+	}
+	(void)mvwaddnstr(win, y, x, line + view_start, display_width);
+	wmove(win, y, x + p - (int)view_start);
+}
+
+/* Edit a bounded string, optionally accepting printable path characters. */
+static int readline(WINDOW *win, int y, int x, char *line, int capitals,
+		size_t capacity, int display_width, int path_mode) {
 	int c;						/* character we read */
 	int i=0;
 	size_t line_len;
+	int accepted_character;
+
+	if (win == NULL || line == NULL || capacity == 0 || display_width <= 0) {
+		return 0;
+	}
 
 	if (strlen(line) == 0) {p=0;}	/* cursor to start if no call in buffer */
 	
@@ -1114,8 +1293,7 @@ static int readline(WINDOW *win, int y, int x, char *line, int capitals, int len
 		mvwaddstr(win,1,55,"OVR");
 	}
 
-	mvwaddstr(win,y,x,line);
-	wmove(win,y,x+p);
+	draw_input_line(win, y, x, line, display_width);
 	wrefresh(win);
 	curs_set(TRUE);
 	
@@ -1131,23 +1309,24 @@ static int readline(WINDOW *win, int y, int x, char *line, int capitals, int len
 			break;
 		line_len = strlen(line);
 
-		if (validchar(c) && line_len < (size_t)len) {
+		accepted_character = validchar(c) || (path_mode && c >= 32 && c <= 126 && c != '#');
+		if (accepted_character &&
+				((mode == 0 && p < (int)line_len) || line_len + 1 < capacity)) {
 
-            // accept - as / for German keyboards (and other layouts where /
-            // requires pressing shift)
-            if (c == '-') {
+            /* Accept - as / for layouts where / requires Shift, except when
+			 * editing a path where a literal hyphen is meaningful. */
+            if (!path_mode && c == '-') {
                 c = '/';
             }
 
-			line[line_len + 1] = '\0';
 			if (capitals) {
-				c = toupper(c);
+				c = toupper((unsigned char)c);
 			}
 			if (mode == 1) {						/* insert */
-				for(i = (int)line_len; i > p; i--) {	/* move all chars by one */
-					line[i] = line[i-1];
-				}
-			} 
+				memmove(line + p + 1, line + p, line_len - (size_t)p + 1);
+			} else if (p == (int)line_len) {
+				line[line_len + 1] = '\0';
+			}
 			line[p]=c;						/* insert into gap */
 			p++;
 		}
@@ -1199,7 +1378,7 @@ static int readline(WINDOW *win, int y, int x, char *line, int capitals, int len
 			update_score();
 			wrefresh(top_w);
 		}
-		else if (c == KEY_F(5)) {
+		else if (c == KEY_F(5) && win != conf_w) {
 			parameter_dialog();
 		}
 		else if (c == KEY_F(6)) {
@@ -1227,11 +1406,7 @@ static int readline(WINDOW *win, int y, int x, char *line, int capitals, int len
 			exit(0);
 		}
 
-		for (int p = 0; p <= len; p++) {	
-			mvwaddstr(win,y,x+p," ");
-		}
-		mvwaddstr(win,y,x,line);
-		wmove(win,y,x+p);
+		draw_input_line(win, y, x, line, display_width);
 		wrefresh(win);
 	}
 	curs_set(FALSE);
@@ -2340,28 +2515,19 @@ static int save_config (void) {
 		"speedupstep", "speeddownstep", "sessionlength", "mincalllength",
 		"maxcalllength", "stoponerror", "adaptiveselection", "reviewmisses",
 		"accuracytarget", "callprefixes", "digitmode", "portablemode",
-		"allowedchars", "sessionseed", "volume", "minpitch", "maxpitch", "qrnlevel"
+		"allowedchars", "sessionseed", "volume", "minpitch", "maxpitch",
+		"qrnlevel", "samplerate"
 	};
 	FILE *fh = NULL;
 	char tmp[PATH_MAX + 80];
 	char *config = NULL;
-	char *updated;
-	char *find;
-	char *findend;
 	size_t config_len;
-	size_t find_offset;
-	size_t findend_offset;
-	size_t replacement_len;
-	size_t updated_len;
-	size_t key_len;
 	long file_length;
 	int i;
 	int written;
-	int use_crlf;
 	int result = -1;
 
 	if ((fh = fopen(rcfilename, "rb")) == NULL) {
-		endwin();
 		fprintf(stderr, "Unable to open config file '%s'!\n", rcfilename);
 		return -1;
 	}
@@ -2391,110 +2557,54 @@ static int save_config (void) {
 		goto cleanup;
 	}
 	fh = NULL;
-	use_crlf = strstr(config, "\r\n") != NULL;
 
 	/* Replace only full keys that begin a line, preserving comments and spacing. */
 	for (i = 0; i < (int)(sizeof(confopts) / sizeof(confopts[0])); i++) {
 		switch (i) {
-			case 0: written = snprintf(tmp, sizeof(tmp), "%s=%s ", confopts[i], mycall); break;
-			case 1: written = snprintf(tmp, sizeof(tmp), "%s=%s ", confopts[i], cbfilename); break;
-			case 2: written = snprintf(tmp, sizeof(tmp), "%s=%s ", confopts[i], dspdevice); break;
-			case 3: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], initialspeed); break;
-			case 4: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], mincharspeed); break;
-			case 5: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], waveform); break;
-			case 6: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], constanttone); break;
-			case 7: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], ctonefreq); break;
-			case 8: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], fixspeed); break;
-			case 9: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], unlimitedattempt); break;
-			case 10: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], f6); break;
-			case 11: written = snprintf(tmp, sizeof(tmp), "%s=%f ", confopts[i], edge); break;
-			case 12: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], speedupstep); break;
-			case 13: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], speedupstep); break;
-			case 14: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], speeddownstep); break;
-			case 15: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], sessionlength); break;
-			case 16: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], mincalllength); break;
-			case 17: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], maxcalllength); break;
-			case 18: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], stoponerror); break;
-			case 19: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], adaptiveselection); break;
-			case 20: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], reviewmisses); break;
-			case 21: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], accuracytarget); break;
-			case 22: written = snprintf(tmp, sizeof(tmp), "%s=%s ", confopts[i], callprefixes); break;
-			case 23: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], digitmode); break;
-			case 24: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], portablemode); break;
-			case 25: written = snprintf(tmp, sizeof(tmp), "%s=%s ", confopts[i], allowedchars); break;
-			case 26: written = snprintf(tmp, sizeof(tmp), "%s=%u ", confopts[i], sessionseed); break;
-			case 27: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], volume); break;
-			case 28: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], minpitch); break;
-			case 29: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], maxpitch); break;
-			default: written = snprintf(tmp, sizeof(tmp), "%s=%d ", confopts[i], qrnlevel); break;
+			case 0: written = snprintf(tmp, sizeof(tmp), "%s", mycall); break;
+			case 1: written = snprintf(tmp, sizeof(tmp), "%s", cbfilename); break;
+			case 2: written = snprintf(tmp, sizeof(tmp), "%s", dspdevice); break;
+			case 3: written = snprintf(tmp, sizeof(tmp), "%d", initialspeed); break;
+			case 4: written = snprintf(tmp, sizeof(tmp), "%d", mincharspeed); break;
+			case 5: written = snprintf(tmp, sizeof(tmp), "%d", waveform); break;
+			case 6: written = snprintf(tmp, sizeof(tmp), "%d", constanttone); break;
+			case 7: written = snprintf(tmp, sizeof(tmp), "%d", ctonefreq); break;
+			case 8: written = snprintf(tmp, sizeof(tmp), "%d", fixspeed); break;
+			case 9: written = snprintf(tmp, sizeof(tmp), "%d", unlimitedattempt); break;
+			case 10: written = snprintf(tmp, sizeof(tmp), "%d", f6); break;
+			case 11: written = snprintf(tmp, sizeof(tmp), "%f", edge); break;
+			case 12: written = snprintf(tmp, sizeof(tmp), "%d", speedupstep); break;
+			case 13: written = snprintf(tmp, sizeof(tmp), "%d", speedupstep); break;
+			case 14: written = snprintf(tmp, sizeof(tmp), "%d", speeddownstep); break;
+			case 15: written = snprintf(tmp, sizeof(tmp), "%d", sessionlength); break;
+			case 16: written = snprintf(tmp, sizeof(tmp), "%d", mincalllength); break;
+			case 17: written = snprintf(tmp, sizeof(tmp), "%d", maxcalllength); break;
+			case 18: written = snprintf(tmp, sizeof(tmp), "%d", stoponerror); break;
+			case 19: written = snprintf(tmp, sizeof(tmp), "%d", adaptiveselection); break;
+			case 20: written = snprintf(tmp, sizeof(tmp), "%d", reviewmisses); break;
+			case 21: written = snprintf(tmp, sizeof(tmp), "%d", accuracytarget); break;
+			case 22: written = snprintf(tmp, sizeof(tmp), "%s", callprefixes); break;
+			case 23: written = snprintf(tmp, sizeof(tmp), "%d", digitmode); break;
+			case 24: written = snprintf(tmp, sizeof(tmp), "%d", portablemode); break;
+			case 25: written = snprintf(tmp, sizeof(tmp), "%s", allowedchars); break;
+			case 26: written = snprintf(tmp, sizeof(tmp), "%u", sessionseed); break;
+			case 27: written = snprintf(tmp, sizeof(tmp), "%d", volume); break;
+			case 28: written = snprintf(tmp, sizeof(tmp), "%d", minpitch); break;
+			case 29: written = snprintf(tmp, sizeof(tmp), "%d", maxpitch); break;
+			case 30: written = snprintf(tmp, sizeof(tmp), "%d", qrnlevel); break;
+			default: written = snprintf(tmp, sizeof(tmp), "%ld", samplerate); break;
 		}
 		if (written < 0 || (size_t)written >= sizeof(tmp)) {
 			fprintf(stderr, "Unable to format config option '%s'.\n", confopts[i]);
 			goto cleanup;
 		}
-		replacement_len = (size_t)written;
-		key_len = strlen(confopts[i]);
-
-		find = config;
-		while ((find = strstr(find, confopts[i])) != NULL) {
-			if ((find == config || find[-1] == '\n') && find[key_len] == '=') {
-				break;
-			}
-			find++;
+		if (qrq_config_set_value(&config, &config_len, confopts[i], tmp) != 0) {
+			fprintf(stderr, "Unable to update config option '%s'.\n", confopts[i]);
+			goto cleanup;
 		}
-
-		if (find != NULL) {
-			findend = find + key_len + 1;
-			while (*findend != '\0' && !isspace((unsigned char)*findend)) {
-				findend++;
-			}
-			find_offset = (size_t)(find - config);
-			findend_offset = (size_t)(findend - config);
-			updated_len = config_len - (findend_offset - find_offset) + replacement_len;
-			updated = malloc(updated_len + 1);
-			if (updated == NULL) {
-				fprintf(stderr, "Out of memory while updating config file.\n");
-				goto cleanup;
-			}
-			memcpy(updated, config, find_offset);
-			memcpy(updated + find_offset, tmp, replacement_len);
-			memcpy(updated + find_offset + replacement_len, findend,
-					config_len - findend_offset + 1);
-		}
-		else {
-			size_t separator_len = config_len != 0 && config[config_len - 1] != '\n' ? 1 : 0;
-			size_t newline_len = use_crlf ? 2 : 1;
-			if (config_len > SIZE_MAX - separator_len - replacement_len - newline_len) {
-				fprintf(stderr, "Config file is too large to update.\n");
-				goto cleanup;
-			}
-			updated_len = config_len + separator_len + replacement_len + newline_len;
-			updated = malloc(updated_len + 1);
-			if (updated == NULL) {
-				fprintf(stderr, "Out of memory while updating config file.\n");
-				goto cleanup;
-			}
-			memcpy(updated, config, config_len);
-			find_offset = config_len;
-			if (separator_len != 0) {
-				updated[find_offset++] = '\n';
-			}
-			memcpy(updated + find_offset, tmp, replacement_len);
-			find_offset += replacement_len;
-			if (use_crlf) {
-				updated[find_offset++] = '\r';
-			}
-			updated[find_offset++] = '\n';
-			updated[find_offset] = '\0';
-		}
-
-		free(config);
-		config = updated;
-		config_len = updated_len;
 	}
 
 	if (write_file_atomic(rcfilename, config, config_len) != 0) {
-		endwin();
 		fprintf(stderr, "Unable to atomically update config file '%s'!\n", rcfilename);
 		goto cleanup;
 	}

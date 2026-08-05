@@ -4,8 +4,18 @@
 #include <errno.h>
 #include <limits.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+static int add_size(size_t left, size_t right, size_t *result) {
+	if (result == NULL || left > SIZE_MAX - right) {
+		errno = EOVERFLOW;
+		return -1;
+	}
+	*result = left + right;
+	return 0;
+}
 
 int qrq_config_read_line(FILE *file, char **buffer, size_t *capacity) {
 	char *resized;
@@ -180,5 +190,142 @@ int qrq_config_copy_string(const char *text, char *destination, size_t capacity,
 				(char)toupper((unsigned char)text[i]) : text[i];
 	}
 	destination[length] = '\0';
+	return 0;
+}
+
+int qrq_config_set_value(char **text, size_t *length, const char *key,
+		const char *value) {
+	char *updated;
+	size_t key_length;
+	size_t value_length;
+	size_t line_start;
+	size_t line_end;
+	size_t content_end;
+	size_t cursor;
+	size_t value_start = 0;
+	size_t value_end = 0;
+	size_t prefix_length;
+	size_t suffix_length;
+	size_t updated_length;
+	size_t separator_length;
+	size_t newline_length;
+	int found = 0;
+	int use_crlf;
+
+	if (text == NULL || *text == NULL || length == NULL || key == NULL ||
+			value == NULL || key[0] == '\0' || strlen(*text) != *length) {
+		errno = EINVAL;
+		return -1;
+	}
+	key_length = strlen(key);
+	value_length = strlen(value);
+	use_crlf = strstr(*text, "\r\n") != NULL;
+
+	for (line_start = 0; line_start < *length; line_start = line_end) {
+		line_end = line_start;
+		while (line_end < *length && (*text)[line_end] != '\n') {
+			line_end++;
+		}
+		if (line_end < *length) {
+			line_end++;
+		}
+		content_end = line_end;
+		if (content_end > line_start && (*text)[content_end - 1] == '\n') {
+			content_end--;
+		}
+		if (content_end > line_start && (*text)[content_end - 1] == '\r') {
+			content_end--;
+		}
+		cursor = line_start;
+		while (cursor < content_end && isspace((unsigned char)(*text)[cursor])) {
+			cursor++;
+		}
+		if (key_length > content_end - cursor ||
+				memcmp(*text + cursor, key, key_length) != 0) {
+			continue;
+		}
+		cursor += key_length;
+		while (cursor < content_end && isspace((unsigned char)(*text)[cursor])) {
+			cursor++;
+		}
+		if (cursor == content_end || (*text)[cursor] != '=') {
+			continue;
+		}
+		cursor++;
+		while (cursor < content_end && isspace((unsigned char)(*text)[cursor])) {
+			cursor++;
+		}
+		value_start = cursor;
+		value_end = content_end;
+		while (cursor < content_end) {
+			if ((*text)[cursor] == '#' &&
+					(cursor == value_start ||
+					 isspace((unsigned char)(*text)[cursor - 1]))) {
+				value_end = cursor;
+				break;
+			}
+			cursor++;
+		}
+		while (value_end > value_start &&
+				isspace((unsigned char)(*text)[value_end - 1])) {
+			value_end--;
+		}
+		found = 1;
+		break;
+	}
+
+	if (found) {
+		prefix_length = value_start;
+		suffix_length = *length - value_end;
+		if (add_size(prefix_length, value_length, &updated_length) != 0 ||
+				add_size(updated_length, suffix_length, &updated_length) != 0 ||
+				updated_length == SIZE_MAX) {
+			return -1;
+		}
+		updated = malloc(updated_length + 1);
+		if (updated == NULL) {
+			return -1;
+		}
+		memcpy(updated, *text, prefix_length);
+		memcpy(updated + prefix_length, value, value_length);
+		memcpy(updated + prefix_length + value_length, *text + value_end,
+				suffix_length + 1);
+	} else {
+		newline_length = use_crlf ? 2 : 1;
+		separator_length = *length != 0 && (*text)[*length - 1] != '\n' ?
+				newline_length : 0;
+		updated_length = *length;
+		if (add_size(updated_length, separator_length, &updated_length) != 0 ||
+				add_size(updated_length, key_length, &updated_length) != 0 ||
+				add_size(updated_length, 1, &updated_length) != 0 ||
+				add_size(updated_length, value_length, &updated_length) != 0 ||
+				add_size(updated_length, newline_length, &updated_length) != 0 ||
+				updated_length == SIZE_MAX) {
+			return -1;
+		}
+		updated = malloc(updated_length + 1);
+		if (updated == NULL) {
+			return -1;
+		}
+		cursor = 0;
+		memcpy(updated, *text, *length);
+		cursor += *length;
+		if (separator_length != 0) {
+			if (use_crlf) updated[cursor++] = '\r';
+			updated[cursor++] = '\n';
+		}
+		memcpy(updated + cursor, key, key_length);
+		cursor += key_length;
+		updated[cursor++] = '=';
+		memcpy(updated + cursor, value, value_length);
+		cursor += value_length;
+		if (use_crlf) updated[cursor++] = '\r';
+		updated[cursor++] = '\n';
+		updated[cursor] = '\0';
+	}
+
+	free(*text);
+	*text = updated;
+	*length = updated_length;
 	return 0;
 }

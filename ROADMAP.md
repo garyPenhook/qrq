@@ -22,7 +22,8 @@ practice.
 - [x] Replace shell-based file copies and predictable temporary files.
 - [x] Make config and score updates atomic and migrate existing user data safely.
 - [~] Add focused tests for scoring, Morse timing, callbase parsing, and config I/O.
-  Scoring and callbase parsing are covered; timing and config I/O remain.
+  Scoring, callbase parsing, config parsing, and comment/line-ending-preserving
+  config updates are covered; Morse timing and full UI round trips remain.
 
 ## Phase 2: Build and release engineering
 
@@ -62,8 +63,8 @@ practice.
 ## Phase 5: Advanced practice and UX
 
 - [~] Configurable pitch range, volume, spacing, and independent rise/fall times.
-  Persisted volume and common rise/fall time are available; remaining controls
-  need dedicated audio design.
+  F5 now exposes volume, QRN, fixed/random pitch, and the common rise/fall time;
+  independent shaping and additional spacing controls need audio design.
 - Optional QRM, QRN, fading, and pileup simulation.
 - [~] Terminal resize handling, configurable keys, and accessible color themes.
   POSIX terminals now refresh ncurses state after SIGWINCH; configurable keys

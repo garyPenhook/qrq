@@ -32,13 +32,15 @@ uses Farnsworth timing: individual dots and dashes remain at the character
 speed while the spacing between characters grows. The live score display shows
 both the overall and effective character speeds.
 
-A callsign can be heard again once by pressing F6, hitting F10 quits the
-attempt. The INS key toggles between insert and overwrite mode in the callsign
-field. Pressing F5 leads to the settings screen. The _previous_ callsign
-can be reheard by pressing F7.
+A callsign can be heard again once by pressing F6, and F10 quits the attempt.
+The INS key toggles between insert and overwrite mode in the callsign field.
+F5 opens three settings pages; press Tab to move between general, audio, and
+call-filter settings. During an attempt, F7 replays the previous callsign.
+Outside an attempt, F7 shows local score, speed, and accuracy history.
 
-The possible speed ranges from 20 CpM (4 WpM) to infinity, the initial speed
-can be set by the user.
+Configured speeds range from 10 to 5000 CpM (2 to 1000 WpM). Adaptive
+slowdown during a session stops at 20 CpM. The correct-answer and
+wrong-answer steps are independently configurable.
 
 There is a simple toplist function in qrq which makes it possible for the user
 to keep track of his training success or to compare scores with others.
@@ -52,14 +54,22 @@ in the "Summary" sub directory (on Windows: in the qrq directory; on Linux:
 in ~/.qrq/), containing all sent and received callsigns, speeds and points.
 
 The toplist file also includes a timestamp of the attempt, which makes it
-possible to keep track of your training progress. Pressing F7 generates a
-graph with score vs. date (GNUplot required, not on Windows). You may also
-import the file into your favorite spreadsheet program to generate stats.
+possible to keep track of your training progress. Pressing F7 shows the
+in-program score history. On supported systems, QRQ falls back to a GNUplot
+graph when no local history can be displayed. You may also import the file
+into your favorite spreadsheet program to generate stats.
 
-Options can be changed in the config file qrqrc or via the options menu (F5).
-As of version 0.2.0, some additional training modes are available, which allow
-e.g. unlimited usage of F6 (call repetition) and attempts that are longer than
-the normal 50 calls.
+Options can be changed in the config file qrqrc or via the three-page F5 menu.
+This includes volume, QRN level, fixed or random pitch, call length and
+content filters, missed-call review, adaptive selection, accuracy goals, and
+reproducible session seeds. The audio sample rate is intentionally read-only
+in F5 because audio is initialized before the menu opens; set it in qrqrc.
+
+Only an ordinary, completed 50-call session is comparable in the toplist.
+Fixed-speed, unlimited-repeat, non-50-call, adaptive, review, and seeded
+sessions are still recorded in local history but are toplist-ineligible.
+Aborted or incomplete sessions are also excluded. If an accuracy goal is set,
+the completed session must meet it.
 
 The standard distribution contains three databases: callbase.qcb (many
 callsigns, taken from real logs), english.qcb (English words), and cwops.qcb

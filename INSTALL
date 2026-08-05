@@ -42,8 +42,8 @@ To compile it for Windows with MinGW/MSYS2, install the matching GCC, make,
 and PDCurses packages, then use USE_WIN32=YES. For example, in an MINGW64
 shell:
 
-pacman -S --needed mingw-w64-x86_64-gcc mingw-w64-x86_64-make mingw-w64-x86_64-pdcurses
-make USE_PA=NO USE_WIN32=YES CC=gcc WIN32_CURSES_CFLAGS=-I/mingw64/include/pdcurses
+pacman -S --needed make mingw-w64-x86_64-gcc mingw-w64-x86_64-pdcurses
+make USE_PA=NO USE_WIN32=YES CC=gcc
 
 Use WIN32_CURSES_CFLAGS and WIN32_CURSES_LIBS to specify a nonstandard
 PDCurses installation.
@@ -75,7 +75,8 @@ When starting 'qrq' for the first time, it will copy 'qrqrc' and
 'toplist' to ~/.qrq/.
 
 3. If you like, edit the configuration file 'qrqrc' according to your needs.
-All values can also be changed from within the program.
+Most values can also be changed on the three F5 pages. The sample rate remains
+read-only in the running program because the audio backend is already open.
 
 'qrq' first searches in the current directory. On platforms other than Windows,
 ~/.qrq/ and then /usr/share/qrq are also searched for these files, if they were

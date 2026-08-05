@@ -7,6 +7,8 @@
 #include <string.h>
 
 int main(void) {
+	char *config_text;
+	size_t config_length;
 	char copied[8];
 	char literal_hash[] = "key=value#literal";
 	char malformed[] = "broken";
@@ -88,5 +90,41 @@ int main(void) {
 	assert(qrq_config_split_line(invalid_key, &key, &value_text) == -1);
 	assert(qrq_config_split_line(literal_hash, &key, &value_text) == 1);
 	assert(strcmp(value_text, "value#literal") == 0);
+
+	config_text = malloc(sizeof("  dspdevice = /old path # device\r\nlast=42"));
+	assert(config_text != NULL);
+	strcpy(config_text, "  dspdevice = /old path # device\r\nlast=42");
+	config_length = strlen(config_text);
+	assert(qrq_config_set_value(&config_text, &config_length, "dspdevice",
+			"/new path with spaces") == 0);
+	assert(strcmp(config_text,
+			"  dspdevice = /new path with spaces # device\r\nlast=42") == 0);
+	assert(qrq_config_set_value(&config_text, &config_length, "last", "99") == 0);
+	assert(strcmp(config_text,
+			"  dspdevice = /new path with spaces # device\r\nlast=99") == 0);
+	assert(qrq_config_set_value(&config_text, &config_length, "sessionseed",
+			"123") == 0);
+	assert(strcmp(config_text,
+			"  dspdevice = /new path with spaces # device\r\nlast=99\r\n"
+			"sessionseed=123\r\n") == 0);
+	assert(config_length == strlen(config_text));
+	free(config_text);
+
+	config_text = malloc(sizeof("mykey=leave alone\nkey=old\n"));
+	assert(config_text != NULL);
+	strcpy(config_text, "mykey=leave alone\nkey=old\n");
+	config_length = strlen(config_text);
+	assert(qrq_config_set_value(&config_text, &config_length, "key", "new") == 0);
+	assert(strcmp(config_text, "mykey=leave alone\nkey=new\n") == 0);
+	free(config_text);
+
+	config_text = malloc(1);
+	assert(config_text != NULL);
+	config_text[0] = '\0';
+	config_length = 0;
+	assert(qrq_config_set_value(&config_text, &config_length, "key", "value") == 0);
+	assert(strcmp(config_text, "key=value\n") == 0);
+	assert(config_length == strlen(config_text));
+	free(config_text);
 	return 0;
 }

@@ -205,15 +205,17 @@ below are gaps those tests do not currently exercise.
 - [x] Validate callbase characters against symbols the player and input editor
   both support. Unsupported rows, including the bundled `cwops.qcb` header, are
   skipped instead of being transmitted as an unenterable question-mark pattern.
-- [~] Make callsign and path editing round-trip. Config loading now preserves
-  `/P`-style callsigns and paths containing spaces; the OSS device editor is
-  still limited to 14 input characters.
+- [x] Make callsign and path editing round-trip. The bounded editor now has a
+  horizontal viewport for full-length OSS paths and accepts literal path
+  punctuation; config saves preserve spaced values, formatting, and comments.
 - [x] Separate deterministic practice randomness from QRN sample generation.
   QRN uses a private generator, so audio sample generation no longer consumes
   the seeded item/pitch selection sequence.
 - [x] Exclude ineligible training sessions from comparable history summaries.
   Fixed-speed, unlimited, review, adaptive, and seeded sessions remain recorded
   but no longer depress average scores or distort score trends.
+- [x] Make session eligibility monotonic. Once a running attempt enables a
+  non-comparable mode, turning it off again cannot restore toplist eligibility.
 - [x] Use collision-resistant summary filenames. Summaries include seconds and
   a securely exclusive `mkstemp()` suffix; incomplete writes/close failures are
   reported and the partial new file is removed.
@@ -231,10 +233,10 @@ below are gaps those tests do not currently exercise.
   `all` value is now rendered in the value column before the key hint.
 - [x] Show the `stoponerror` state and its existing `t` key alongside fixed
   speed so the setting no longer changes invisibly.
-- [ ] Expose or clearly label config-only options: volume, QRN level, random
+- [x] Expose config-only options through three F5 pages. Volume, QRN, random
   pitch range, call length/prefix/digit/portable/character filters, and session
-  seed. `samplerate` is a hidden read-only legacy option that is neither in the
-  sample config nor saved; either support/document it fully or remove it.
+  seed are editable. `samplerate` is shown as read-only, documented in the
+  sample config, and now persists when F2 saves other settings.
 - [x] Prevent integer overflow in repeated F5 key adjustments for initial
   speed, minimum character speed, and speed steps, and show enforced limits.
 - [x] Make the callbase chooser bounded and cancellable, deduplicate results,
@@ -246,10 +248,13 @@ below are gaps those tests do not currently exercise.
 
 ### Build, test, and documentation follow-up
 
-- [ ] Add focused tests for config read/save round trips, CRLF/no-final-newline
+- [~] Add focused tests for config read/save round trips, CRLF/no-final-newline
   files, every option boundary, speed-down plus Farnsworth timing, word gaps,
   cumulative error counts past display wrap, abort eligibility, adaptive/review
-  scheduling, summary collisions, and malformed toplist/history files.
+  scheduling, summary collisions, and malformed toplist/history files. Config
+  value replacement now covers spaced paths, inline comments, CRLF, appending,
+  and a final line without a newline; the remaining UI/audio cases still need
+  extraction or an integration harness.
 - [x] Exercise unit tests under ASan/UBSan in CI. The sanitizer job currently
   runs the focused suites as well as `qrq -h`, and Makefile test recipes honor
   caller-provided sanitizer compiler flags.
@@ -258,9 +263,8 @@ below are gaps those tests do not currently exercise.
   and Core Audio failure-path tests.
 - [x] Update CI's hard-coded version (`0.3.5`) to the Makefile version and add a
   single-source version check.
-- [ ] Refresh README, INSTALL, and the 2013 man page to enumerate current
-  options and eligibility rules. README still states fixed +/-10 CpM behavior,
-  INSTALL says all values are available in-program, and the man page refers to
-  runtime resources through `DESTDIR` rather than `PREFIX`.
+- [x] Refresh README, INSTALL, and the man page to enumerate current controls,
+  speed bounds, settings pages, history, eligibility rules, MSYS2 build steps,
+  and the runtime `PREFIX`/packaging `DESTDIR` distinction.
 - [x] Add a conventional `test` alias for the existing `check` target so the
   documented/common `make test` workflow does not fail.
