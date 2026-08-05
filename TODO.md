@@ -91,8 +91,6 @@ PulseAudio has not been built locally because `pulse/simple.h` and the
   `func(void)`.
 - Several signed/unsigned comparisons involve `strlen()` and call counts.
 - Dynamically constructed format strings prevent compiler format checking.
-- Summary construction uses repeated unbounded `sprintf()` into a fixed
-  65536-byte global buffer.
 - The staged upstream files contain substantial pre-existing whitespace/CRLF
   noise; do not mix a repository-wide formatting pass into correctness fixes.
 

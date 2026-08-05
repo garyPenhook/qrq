@@ -33,6 +33,7 @@ typedef int AUDIO_HANDLE;
 #include <time.h> 
 #include <limits.h> 			/* PATH_MAX */
 #include <stdint.h>
+#include <stdarg.h>
 
 #ifndef PATH_MAX				/* Not defined e.g. on GNU/hurd */
 #define PATH_MAX 4096 
@@ -175,6 +176,7 @@ static int clear_parameter_display();
 static void update_parameter_dialog();
 static void start_summary_file();
 static void close_summary_file();
+static int append_summary(const char *format, ...);
 static int validchar(int c);
 static void free_calls(void);
 static int copy_file(const char *source_path, const char *destination_path);
@@ -219,10 +221,12 @@ char sumfilepath[PATH_MAX]="";			/* path where to save summary files for each at
 
 char destdir[PATH_MAX]="";
 
-char summary[65536]="";                 /* detailed attempt summary, saved in a file */
+char *summary = NULL;                    /* detailed attempt summary, saved in a file */
+size_t summary_capacity = 0;
 char summary_scr_fmt[255]="";           /* format string for a single summary score line */
 char summary_hdr_fmt[255]="";           /* format string for the summary header line */
-int s_pos = 0;                          /* Position within summary */
+size_t s_pos = 0;                        /* Position within summary */
+int summary_failed = 0;
 
 /* create windows */
 WINDOW *top_w;					/* actual score					*/
@@ -1167,23 +1171,93 @@ static int calc_score (char * realcall, char * input, int spd, char * output, in
 		}
 	}
 
-    s_pos += sprintf(summary + s_pos, summary_scr_fmt, realcall, input, output, spd, spd/5, score, f6pressed ? '*' : ' ');
+	if (append_summary(summary_scr_fmt, realcall, input, output, spd, spd/5,
+			score, f6pressed ? '*' : ' ') != 0) {
+		summary_failed = 1;
+	}
 
     return score;
 }
 
-static void start_summary_file () {
+static int append_summary(const char *format, ...) {
+	va_list args;
+	va_list args_copy;
+	char *resized;
+	size_t required;
+	size_t new_capacity;
+	int written;
 
-	sprintf(summary_scr_fmt, "%%-%ds %%-%ds %%-%ds %%3d %%3d %%5d %%c\r\n", call_maxlen + 2, call_maxlen + 2, call_maxlen + 2);
-	sprintf(summary_hdr_fmt, "%%-%ds %%-%ds %%-%ds %%-3s %%-3s %%-5s %%s\r\n", call_maxlen + 2, call_maxlen + 2, call_maxlen + 2);
-
-    s_pos = 0;
-    s_pos += sprintf(summary + s_pos, "QRQ attempt by %s.\r\n\r\n", mycall);
-    s_pos += sprintf(summary + s_pos, summary_hdr_fmt, "Sent call", "Input", "Difference", "CpM", "WpM", "Score", "F6");
-	for (int i = 0; i < (3 * (call_maxlen + 2) + 30); i++) {
-    	s_pos += sprintf(summary + s_pos, "-");
+	va_start(args, format);
+	va_copy(args_copy, args);
+	written = vsnprintf(NULL, 0, format, args);
+	va_end(args);
+	if (written < 0 || s_pos > SIZE_MAX - (size_t)written - 1) {
+		va_end(args_copy);
+		return -1;
 	}
-    s_pos += sprintf(summary + s_pos, "\r\n");
+	required = s_pos + (size_t)written + 1;
+	if (required > summary_capacity) {
+		new_capacity = summary_capacity == 0 ? 1024 : summary_capacity;
+		while (new_capacity < required) {
+			if (new_capacity > SIZE_MAX / 2) {
+				new_capacity = required;
+				break;
+			}
+			new_capacity *= 2;
+		}
+		resized = realloc(summary, new_capacity);
+		if (resized == NULL) {
+			va_end(args_copy);
+			return -1;
+		}
+		summary = resized;
+		summary_capacity = new_capacity;
+	}
+	if (vsnprintf(summary + s_pos, summary_capacity - s_pos, format, args_copy) != written) {
+		va_end(args_copy);
+		return -1;
+	}
+	va_end(args_copy);
+	s_pos += (size_t)written;
+	return 0;
+}
+
+static void start_summary_file () {
+	int row_format_len;
+	int header_format_len;
+
+	row_format_len = snprintf(summary_scr_fmt, sizeof(summary_scr_fmt),
+			"%%-%ds %%-%ds %%-%ds %%3d %%3d %%5d %%c\r\n", call_maxlen + 2,
+			call_maxlen + 2, call_maxlen + 2);
+	header_format_len = snprintf(summary_hdr_fmt, sizeof(summary_hdr_fmt),
+			"%%-%ds %%-%ds %%-%ds %%-3s %%-3s %%-5s %%s\r\n", call_maxlen + 2,
+			call_maxlen + 2, call_maxlen + 2);
+	if (row_format_len < 0 || (size_t)row_format_len >= sizeof(summary_scr_fmt) ||
+			header_format_len < 0 || (size_t)header_format_len >= sizeof(summary_hdr_fmt)) {
+		summary_failed = 1;
+		return;
+	}
+
+	s_pos = 0;
+	summary_failed = 0;
+	if (summary != NULL) {
+		summary[0] = '\0';
+	}
+	if (append_summary("QRQ attempt by %s.\r\n\r\n", mycall) != 0 ||
+			append_summary(summary_hdr_fmt, "Sent call", "Input", "Difference", "CpM",
+					"WpM", "Score", "F6") != 0) {
+		summary_failed = 1;
+		return;
+	}
+	for (int i = 0; i < (3 * (call_maxlen + 2) + 30); i++) {
+		if (append_summary("-") != 0) {
+			summary_failed = 1;
+			return;
+		}
+	}
+	if (append_summary("\r\n") != 0) {
+		summary_failed = 1;
+	}
 }
 
 static void close_summary_file () {
@@ -1207,8 +1281,12 @@ static void close_summary_file () {
         return;
     }
 
-    s_pos += sprintf(summary + s_pos, "\r\n");
-    s_pos += sprintf(summary + s_pos, "Score: %d, Max. speed (CpM/WpM): %d / %d\r\nSaved at: %s\r\n", score, maxspeed, maxspeed/5, time_fmt);
+	if (summary_failed || append_summary("\r\n") != 0 ||
+			append_summary("Score: %d, Max. speed (CpM/WpM): %d / %d\r\nSaved at: %s\r\n",
+				score, maxspeed, maxspeed/5, time_fmt) != 0) {
+		fprintf(stderr, "Unable to create complete attempt summary.\n");
+		return;
+	}
 
 	path_len = strlen(sumfilepath);
 	call_len = strlen(mycall);
@@ -1231,7 +1309,7 @@ static void close_summary_file () {
 		return;
 	}
 
-	if (fwrite(summary, 1, (size_t)s_pos, fh) != (size_t)s_pos) {
+	if (fwrite(summary, 1, s_pos, fh) != s_pos) {
 		fprintf(stderr, "Unable to write summary file (%s)!\n", filename);
 	}
 	fclose(fh);
