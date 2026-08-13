@@ -8,7 +8,7 @@ version of Rufz by DL4MM, for Linux, Unix, OS X and Windows.
 
 It's not intended for learning telegraphy (check out https://lcwo.net/ for
 that!), but to improve the ability to copy callsigns (or words) at high
-speeds, as needed for example in ham radio contesting. 
+speeds, as needed for example in ham radio contesting.
 
 ## W4GNS fork enhancements
 
@@ -24,7 +24,7 @@ these W4GNS enhancements in detail.
 
 -----------------------------------------------------------------------------
 
-COMPILE / INSTALL 
+COMPILE / INSTALL
 
 See separate file "INSTALL"
 
