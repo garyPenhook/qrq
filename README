@@ -10,6 +10,18 @@ It's not intended for learning telegraphy (check out https://lcwo.net/ for
 that!), but to improve the ability to copy callsigns (or words) at high
 speeds, as needed for example in ham radio contesting. 
 
+## W4GNS fork enhancements
+
+Credit: **W4GNS** designed and implemented every enhancement added in this
+fork after the upstream QRQ 0.3.5 baseline. These additions include safer
+data/configuration handling and builds; configurable session, speed, filter,
+review, and seeded-practice controls; persistent response-time, item-accuracy,
+and character-confusion feedback; confusion-focused and spaced-review drills;
+delayed-answer batch copy; QSB, QRN, and CW QRM simulation; zero-padded
+contest serial-exchange practice; refreshed CWops practice data; and the
+`qrq --version` console command. The feature descriptions below document
+these W4GNS enhancements in detail.
+
 -----------------------------------------------------------------------------
 
 COMPILE / INSTALL 
