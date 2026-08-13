@@ -50,6 +50,9 @@ practice.
 - [x] Filters for call length, prefixes, digits, portable suffixes, and
   characters through `qrqrc`; all constraints are applied by the loader.
 - [x] Seeded sessions for repeatable challenges via `sessionseed` in `qrqrc`.
+- [x] Add zero-padded three-, four-, and five-digit serial-exchange practice.
+  The F5 call-filter page can replace the selected database with the complete
+  serial range for a training-only contest-copy session.
 
 ## Phase 4: Feedback and statistics
 
@@ -77,8 +80,8 @@ practice.
 - [~] Configurable pitch range, volume, spacing, and independent rise/fall times.
   F5 now exposes volume, QRN, fixed/random pitch, and the common rise/fall time;
   independent shaping and additional spacing controls need audio design.
-- [~] Optional QRM, QRN, fading, and pileup simulation. QRN and configurable
-  QSB-style fading are available; QRM and pileup remain.
+- [~] Optional QRM, QRN, fading, and pileup simulation. QRN, configurable
+  QSB-style fading, and co-channel CW QRM are available; pileup remains.
 - [~] Terminal resize handling, configurable keys, and accessible color themes.
   POSIX terminals now refresh ncurses state after SIGWINCH; configurable keys
   and themes remain.

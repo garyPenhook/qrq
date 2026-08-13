@@ -29,6 +29,21 @@ int main(void) {
 	assert(callbase.count == 2);
 	qrq_callbase_free(&callbase);
 
+	errno = 0;
+	assert(qrq_callbase_generate_serials(2, &callbase) == -1 && errno == EINVAL);
+	assert(qrq_callbase_generate_serials(3, &callbase) == 0);
+	assert(callbase.count == 1000 && callbase.max_length == 3);
+	assert(strcmp(callbase.items[0], "000") == 0);
+	assert(strcmp(callbase.items[42], "042") == 0);
+	assert(strcmp(callbase.items[999], "999") == 0);
+	qrq_callbase_free(&callbase);
+	assert(qrq_callbase_generate_serials(QRQ_SERIAL_DIGITS_MAX, &callbase) == 0);
+	assert(callbase.count == 100000 &&
+			callbase.max_length == QRQ_SERIAL_DIGITS_MAX);
+	assert(strcmp(callbase.items[0], "00000") == 0);
+	assert(strcmp(callbase.items[99999], "99999") == 0);
+	qrq_callbase_free(&callbase);
+
 	filter.minimum_length = 3;
 	filter.maximum_length = 4;
 	assert(qrq_callbase_load(path, &filter, &callbase) == 0);

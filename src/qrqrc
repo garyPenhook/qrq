@@ -37,6 +37,9 @@ spacedrepetition=0
 # retention drill). Repeats are unavailable while batching is enabled.
 # Batch-copy sessions are not toplist comparable.
 answerbatch=1
+# generate zero-padded contest serial exchanges instead of loading a callbase
+# values: 0 = off, 3..5 = number of serial digits (training-only)
+serialdigits=0
 # minimum whole-session accuracy for a local toplist entry; 0 disables it
 # values: 0 or 50..100
 accuracytarget=0
@@ -81,6 +84,9 @@ maxpitch=900
 
 # QRN-like background noise as a percentage (0..100)
 qrnlevel=0
+
+# co-channel CW interference as a percentage (0 = no QRM)
+qrmlevel=0
 
 # QSB-like slow signal fading depth as a percentage (0 = steady signal)
 qsblevel=0

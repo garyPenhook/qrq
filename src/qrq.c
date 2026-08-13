@@ -109,6 +109,7 @@ typedef void *AUDIO_HANDLE;
 #include "history.h"
 #include "confusion.h"
 #include "item_history.h"
+#include "audio_effects.h"
 #include "config.h"
 
 /* callsign array will be dynamically allocated */
@@ -161,6 +162,9 @@ static int qrnlevel=0;                  /* background noise as a percentage */
 static uint32_t qrn_state=0x6d2b79f5U;  /* separate from practice rand() state */
 static int qsblevel=0;                  /* signal fade depth as a percentage */
 static double qsb_phase=0.0;
+static int qrmlevel=0;                  /* co-channel interfering CW percentage */
+static struct qrq_qrm_state qrm_state;
+static size_t qrm_dot_samples=1;
 static int minpitch=500;
 static int maxpitch=900;
 static int f6=0;						/* f6 = 1: allow unlimited repeats */
@@ -180,6 +184,7 @@ static int focusconfusions_active=0;
 static int spacedrepetition=0;
 static size_t spaced_due_count=0;
 static int answerbatch=1;
+static int serialdigits=0;
 static int accuracytarget=0;
 static unsigned int sessionseed=0;
 static int attemptvalid=1;				/* 1 = not using any "cheats" */
@@ -230,7 +235,8 @@ static int statistics (void);
 static size_t read_callbase(void);
 static void find_callbases(void);
 static void select_callbase (void);
-static void help (void);
+static void help(void);
+static void print_version(void);
 static void callbase_dialog(void);
 static void parameter_dialog(void);
 static int clear_parameter_display(void);
@@ -452,6 +458,10 @@ int main (int argc, char *argv[]) {
 	uint64_t response_finished_ms;
 	uint64_t response_ms;
 
+	if (argc == 2 && strcmp(argv[1], "--version") == 0) {
+		print_version();
+		return EXIT_SUCCESS;
+	}
 	if (argc > 1) {
 		help();
 	}
@@ -514,6 +524,7 @@ int main (int argc, char *argv[]) {
 	
 	/* Practice selection and simulated receiver noise use independent streams. */
 	qrn_state ^= (uint32_t)time(NULL);
+	qrq_qrm_init(&qrm_state, qrn_state ^ 0xa5d4e3f1U);
 	srand((unsigned)time(NULL));
 
 	/****** Reading configuration file ******/
@@ -521,7 +532,7 @@ int main (int argc, char *argv[]) {
 	read_config();
 
 	attemptvalid = 1;
-	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses || focusconfusions || spacedrepetition || answerbatch != 1 || sessionseed != 0) {
+	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses || focusconfusions || spacedrepetition || answerbatch != 1 || serialdigits != 0 || sessionseed != 0) {
 		attemptvalid = 0;	
 	}
 
@@ -967,6 +978,8 @@ while ((j = getch()) != 0) {
 				case 'V': volume = volume <= 95 ? volume + 5 : 100; handled = 1; break;
 				case 'n': qrnlevel = qrnlevel >= 5 ? qrnlevel - 5 : 0; handled = 1; break;
 				case 'N': qrnlevel = qrnlevel <= 95 ? qrnlevel + 5 : 100; handled = 1; break;
+				case 'r': qrmlevel = qrmlevel >= 5 ? qrmlevel - 5 : 0; handled = 1; break;
+				case 'R': qrmlevel = qrmlevel <= 95 ? qrmlevel + 5 : 100; handled = 1; break;
 				case 'q': qsblevel = qsblevel >= 5 ? qsblevel - 5 : 0; handled = 1; break;
 				case 'Q': qsblevel = qsblevel <= 95 ? qsblevel + 5 : 100; handled = 1; break;
 			case 'h':
@@ -1049,6 +1062,12 @@ while ((j = getch()) != 0) {
 			case 'b':
 				answerbatch = answerbatch == QRQ_PRACTICE_MAX_ANSWER_BATCH ? 1 :
 						answerbatch + 1;
+				handled = 1;
+				break;
+			case 's':
+				if (serialdigits == 0) serialdigits = QRQ_SERIAL_DIGITS_MIN;
+				else if (serialdigits < QRQ_SERIAL_DIGITS_MAX) serialdigits++;
+				else serialdigits = 0;
 				handled = 1;
 				break;
 		}
@@ -1242,7 +1261,7 @@ while ((j = getch()) != 0) {
 	if (!callnr) {
 		attemptvalid = 1;
 	}
-	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses || focusconfusions || spacedrepetition || answerbatch != 1 || sessionseed != 0) {
+	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses || focusconfusions || spacedrepetition || answerbatch != 1 || serialdigits != 0 || sessionseed != 0) {
 		attemptvalid = 0;	
 	}
 
@@ -1284,13 +1303,14 @@ void update_parameter_dialog (void) {
 		wattroff(conf_w, A_BOLD);
 		mvwprintw(conf_w, 2, 2, "Output volume:              %3d %%       v/V -/+", volume);
 		mvwprintw(conf_w, 3, 2, "QRN noise level:            %3d %%       n/N -/+", qrnlevel);
-		mvwprintw(conf_w, 4, 2, "QSB fade depth:            %3d %%       q/Q -/+", qsblevel);
-		mvwprintw(conf_w, 5, 2, "Random pitch minimum:      %4d Hz      H/h -/+", minpitch);
-		mvwprintw(conf_w, 6, 2, "Random pitch maximum:      %4d Hz      J/j -/+", maxpitch);
-		mvwprintw(conf_w, 7, 2, "Audio sample rate:       %6ld Hz      qrqrc", samplerate);
-		mvwprintw(conf_w, 8, 2, "Rise/fall and waveform controls are on page 1.");
+		mvwprintw(conf_w, 4, 2, "QRM CW level:              %3d %%       r/R -/+", qrmlevel);
+		mvwprintw(conf_w, 5, 2, "QSB fade depth:            %3d %%       q/Q -/+", qsblevel);
+		mvwprintw(conf_w, 6, 2, "Random pitch minimum:      %4d Hz      H/h -/+", minpitch);
+		mvwprintw(conf_w, 7, 2, "Random pitch maximum:      %4d Hz      J/j -/+", maxpitch);
+		mvwprintw(conf_w, 8, 2, "Audio sample rate:       %6ld Hz      qrqrc", samplerate);
+		mvwprintw(conf_w, 9, 2, "Rise/fall and waveform controls are on page 1.");
 #ifdef OSS
-		mvwprintw(conf_w, 9, 2, "DSP device: %-27.27s e", dspdevice);
+		mvwprintw(conf_w, 10, 2, "DSP device: %-27.27s e", dspdevice);
 #endif
 		mvwprintw(conf_w, 15, 4, ": Play CW sample");
 		mvwprintw(conf_w, 15, 25, ": Save config");
@@ -1301,6 +1321,13 @@ void update_parameter_dialog (void) {
 		return;
 	}
 	if (parameter_page == 2) {
+		char serial_mode[16];
+
+		if (serialdigits == 0) {
+			(void)snprintf(serial_mode, sizeof(serial_mode), "off");
+		} else {
+			(void)snprintf(serial_mode, sizeof(serial_mode), "%d digits", serialdigits);
+		}
 		wattron(conf_w, A_BOLD);
 		mvwaddstr(conf_w, 1, 1, "Configuration 3/3: Call filters       Value / Change");
 		mvwprintw(conf_w, 15, 2, "F6                   F2                F10");
@@ -1313,17 +1340,21 @@ void update_parameter_dialog (void) {
 				filter_mode_names[portablemode]);
 		mvwprintw(conf_w, 6, 2, "Call prefixes: %-25.25s x", callprefixes[0] ? callprefixes : "(any)");
 		mvwprintw(conf_w, 7, 2, "Allowed chars: %-25.25s y", allowedchars[0] ? allowedchars : "(any)");
-		mvwprintw(conf_w, 8, 2, "Session seed*:            %-10u %s", sessionseed,
+		mvwprintw(conf_w, 8, 2, "Serial exchanges*:        %-10s s", serial_mode);
+		mvwprintw(conf_w, 9, 2, "Session seed*:            %-10u %s", sessionseed,
 				callnr ? "next session" : "z");
-		mvwprintw(conf_w, 9, 2, "Focus confusions*:        %-3s h",
+		mvwprintw(conf_w, 10, 2, "Focus confusions*:        %-3s h",
 				focusconfusions ? "yes" : "no");
-		mvwprintw(conf_w, 10, 2, "Spaced review*:           %-3s m",
+		mvwprintw(conf_w, 11, 2, "Spaced review*:           %-3s m",
 				spacedrepetition ? "yes" : "no");
-		mvwprintw(conf_w, 11, 2, "Answer batch*:            %-3d b", answerbatch);
-		if (!callnr) {
-			mvwprintw(conf_w, 12, 2, "Callsign database: %-24.24s d", basename(cbfilename));
+		mvwprintw(conf_w, 12, 2, "Answer batch*:            %-3d b", answerbatch);
+		if (serialdigits != 0) {
+			mvwaddstr(conf_w, 13, 2,
+					"Serial generator overrides callsign database.");
+		} else if (!callnr) {
+			mvwprintw(conf_w, 13, 2, "Callsign database: %-24.24s d", basename(cbfilename));
 		}
-		mvwaddstr(conf_w, 13, 2, "Filters and training modes apply to the next session.");
+		mvwaddstr(conf_w, 14, 2, "Filters and training modes apply to the next session.");
 		mvwprintw(conf_w, 15, 4, ": Play CW sample");
 		mvwprintw(conf_w, 15, 25, ": Save config");
 		mvwprintw(conf_w, 15, 44, ": Exit");
@@ -1850,6 +1881,9 @@ static int update_score(void) {
 	else if (answerbatch > 1) {
 		mvwprintw(top_w, 1, 27, "[batch copy: %d]", answerbatch);
 	}
+	else if (serialdigits != 0) {
+		mvwprintw(top_w, 1, 27, "[serials: %d digits]", serialdigits);
+	}
 	else if (spacedrepetition) {
 		if (spaced_due_count != 0) {
 			mvwprintw(top_w, 1, 27, "[spaced: %zu due]", spaced_due_count);
@@ -2235,6 +2269,8 @@ static int read_config(void) {
 			(void)config_int_value(line, key, value, 0, 100, &qrnlevel);
 		} else if (strcmp(key, "qsblevel") == 0) {
 			(void)config_int_value(line, key, value, 0, 100, &qsblevel);
+		} else if (strcmp(key, "qrmlevel") == 0) {
+			(void)config_int_value(line, key, value, 0, 100, &qrmlevel);
 		} else if (strcmp(key, "minpitch") == 0) {
 			(void)config_int_value(line, key, value, 100, 4000,
 					&configured_minpitch);
@@ -2262,6 +2298,15 @@ static int read_config(void) {
 		} else if (strcmp(key, "answerbatch") == 0) {
 			(void)config_int_value(line, key, value, 1,
 					QRQ_PRACTICE_MAX_ANSWER_BATCH, &answerbatch);
+		} else if (strcmp(key, "serialdigits") == 0) {
+			if (config_int_value(line, key, value, 0,
+					QRQ_SERIAL_DIGITS_MAX, &parsed_int) == 0) {
+				if (parsed_int == 0 || parsed_int >= QRQ_SERIAL_DIGITS_MIN) {
+					serialdigits = parsed_int;
+				} else {
+					config_value_error(line, key, value);
+				}
+			}
 		} else if (strcmp(key, "callprefixes") == 0) {
 			(void)config_graph_string_value(line, key, value, callprefixes,
 					sizeof(callprefixes));
@@ -2400,6 +2445,11 @@ static MORSE_THREAD_RETURN morse(void *arg) {
 	/* set bufpos to 0 */
 
 	full_bufpos = 0; 
+	qrm_dot_samples = (size_t)(samplerate * 6 /
+			(speed < mincharspeed ? mincharspeed : speed));
+	if (qrm_dot_samples == 0) {
+		qrm_dot_samples = 1;
+	}
 
 	/* Some silence; otherwise the call starts right after pressing enter */
 	if (tonegen(0, samplerate/4, SILENCE) != 0) {
@@ -2691,6 +2741,10 @@ static int tonegen (int freq, int len, int waveform) {
 				qsb_phase -= 2.0 * PI;
 			}
 		}
+		if (qrmlevel != 0) {
+			val += qrq_qrm_next_sample(&qrm_state, (unsigned int)samplerate,
+					qrm_dot_samples, qrmlevel);
+		}
 		
 		if (qrnlevel != 0) {
 			val += qrn_sample() * (qrnlevel / 100.0);
@@ -2727,8 +2781,8 @@ static int save_config (void) {
 		"maxcalllength", "stoponerror", "adaptiveselection", "reviewmisses",
 		"accuracytarget", "callprefixes", "digitmode", "portablemode",
 		"allowedchars", "sessionseed", "volume", "minpitch", "maxpitch",
-		"qrnlevel", "qsblevel", "samplerate", "focusconfusions", "spacedrepetition",
-		"answerbatch"
+		"qrnlevel", "qsblevel", "qrmlevel", "samplerate", "focusconfusions", "spacedrepetition",
+		"answerbatch", "serialdigits"
 	};
 	FILE *fh = NULL;
 	char tmp[PATH_MAX + 80];
@@ -2805,10 +2859,12 @@ static int save_config (void) {
 			case 29: written = snprintf(tmp, sizeof(tmp), "%d", maxpitch); break;
 			case 30: written = snprintf(tmp, sizeof(tmp), "%d", qrnlevel); break;
 			case 31: written = snprintf(tmp, sizeof(tmp), "%d", qsblevel); break;
-			case 32: written = snprintf(tmp, sizeof(tmp), "%ld", samplerate); break;
-			case 33: written = snprintf(tmp, sizeof(tmp), "%d", focusconfusions); break;
-			case 34: written = snprintf(tmp, sizeof(tmp), "%d", spacedrepetition); break;
-			default: written = snprintf(tmp, sizeof(tmp), "%d", answerbatch); break;
+			case 32: written = snprintf(tmp, sizeof(tmp), "%d", qrmlevel); break;
+			case 33: written = snprintf(tmp, sizeof(tmp), "%ld", samplerate); break;
+			case 34: written = snprintf(tmp, sizeof(tmp), "%d", focusconfusions); break;
+			case 35: written = snprintf(tmp, sizeof(tmp), "%d", spacedrepetition); break;
+			case 36: written = snprintf(tmp, sizeof(tmp), "%d", answerbatch); break;
+			default: written = snprintf(tmp, sizeof(tmp), "%d", serialdigits); break;
 		}
 		if (written < 0 || (size_t)written >= sizeof(tmp)) {
 			fprintf(stderr, "Unable to format config option '%s'.\n", confopts[i]);
@@ -3493,7 +3549,15 @@ static size_t read_callbase(void) {
 	};
 
 	free_calls();
-	if (qrq_callbase_load(cbfilename, &filter, &loaded_callbase) != 0) {
+	if (serialdigits != 0) {
+		if (qrq_callbase_generate_serials((unsigned int)serialdigits,
+					&loaded_callbase) != 0) {
+			endwin();
+			fprintf(stderr, "Error: Couldn't generate serial exchanges: %s\n",
+					strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+	} else if (qrq_callbase_load(cbfilename, &filter, &loaded_callbase) != 0) {
 		endwin();
 		fprintf(stderr, "Error: Couldn't load callsign database '%s': %s\n",
 				cbfilename, strerror(errno));
@@ -3679,7 +3743,11 @@ int validchar (int c) {
     return ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0'  && c <= '9') || c == '/' || c == ' ' || c == '-' || c == '.' || c == ',' || c == '=' || c == '?');
 }
 
-void help (void) {
+static void print_version(void) {
+	printf("qrq %s\n", VERSION);
+}
+
+static void help(void) {
 		printf("qrq v%s  (c) 2006-2025 Fabian Kurz, DJ5CW. "
 					"http://fkurz.net/ham/qrq.html\n", VERSION);
 		printf("High speed morse telegraphy trainer, similar to"
@@ -3689,6 +3757,7 @@ void help (void) {
 		printf("under certain conditions (see COPYING).\n\n");
 		printf("Start 'qrq' without any command line arguments for normal"
 					" operation.\n\n");
+		printf("Use 'qrq --version' to print the version number.\n\n");
 #ifdef BUILD_INFO
         printf("Build info for this executable:\n%s\n", BUILD_INFO);
 #endif

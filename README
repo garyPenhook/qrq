@@ -16,6 +16,8 @@ COMPILE / INSTALL
 
 See separate file "INSTALL"
 
+Run `qrq --version` to print the installed version in the console.
+
 -----------------------------------------------------------------------------
 How to use it
 
@@ -81,20 +83,31 @@ short-term-copy drill for contest and pileup work; F6/F7 repeats are disabled
 while it is active. Answer timing starts when each entry prompt appears, and
 batch sessions are not toplist comparable.
 
+Set `serialdigits` to 3, 4, or 5 (or use `s` on F5's call-filter page) to
+replace the selected callsign database with every zero-padded serial exchange
+of that width: for example, `000` through `999`. This is a training-only
+contest-copy drill, so serial sessions are not toplist comparable. The `s`
+key cycles off, 3, 4, and 5 digits.
+
 Set `qsblevel` from 0 to 100 (or use `q/Q` on F5's audio page) to apply slow
 QSB-style fades to the signal. It is independent of QRN, so it can be used to
 practice weak-signal copy with or without background noise.
 
+Set `qrmlevel` from 0 to 100 (or use `r/R` on F5's audio page) to add
+narrow-band CW interference. QRM arrives in short dot/dash-like bursts at
+nearby audio frequencies and is independent of QRN and QSB.
+
 Options can be changed in the config file qrqrc or via the three-page F5 menu.
-This includes volume, QRN, QSB-style fading, fixed or random pitch, call
+This includes volume, QRN, QRM, QSB-style fading, fixed or random pitch, call
 length and content filters, missed-call review, adaptive selection, accuracy
 goals, and reproducible session seeds. The audio sample rate is intentionally
 read-only in F5 because audio is initialized before the menu opens; set it in
 qrqrc.
 
 Only an ordinary, completed 50-call session is comparable in the toplist.
-Fixed-speed, unlimited-repeat, non-50-call, adaptive, review, batch-copy, and
-seeded sessions are still recorded in local history but are toplist-ineligible.
+Fixed-speed, unlimited-repeat, non-50-call, adaptive, review, batch-copy,
+serial-copy, and seeded sessions are still recorded in local history but are
+toplist-ineligible.
 Aborted or incomplete sessions are also excluded. If an accuracy goal is set,
 the completed session must meet it.
 

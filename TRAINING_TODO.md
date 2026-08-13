@@ -21,8 +21,10 @@ tool while preserving its fast, keyboard-first contest trainer workflow.
 
 - [x] Add persistent spaced review. Wrong items are due in the next session;
   successful items return after 1, 3, 7, 15, then 31 subsequent attempts.
-- [ ] Provide focused generators for digits, serial exchanges, prefixes,
-  portable calls, prosigns, punctuation, and user-supplied text.
+- [~] Provide focused generators for digits, serial exchanges, prefixes,
+  portable calls, prosigns, punctuation, and user-supplied text. Zero-padded
+  three-, four-, and five-digit serial exchanges are available; the remaining
+  generators still need dedicated modes.
 - [x] Add a delayed-answer batch mode that sends two to five items before
   accepting input, for pileup and short-term-copy practice.
 - [ ] Provide a goal mode such as "20 items at 95%" or "maintain 35 WpM for
@@ -31,7 +33,7 @@ tool while preserving its fast, keyboard-first contest trainer workflow.
 ## Realism and accessibility
 
 - [~] Add independently configurable QRM, fading/QSB, and pileup simulation;
-  QSB fade depth is now independent of QRN, while QRM and pileup remain.
+  QRN, co-channel CW QRM, and QSB fade depth are independent. Pileup remains.
   Keep the clean-signal mode available for controlled practice.
 - [ ] Add separate character-, word-, and extra-space timing controls with
   clear Farnsworth labels.

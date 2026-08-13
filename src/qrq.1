@@ -4,6 +4,7 @@ qrq \- High speed Morse telegraphy trainer
 
 .SH SYNOPSIS
 .B qrq 
+.RB [ --version ]
 
 .B qrqscore
 [OPTION]
@@ -29,10 +30,20 @@ settings. F6 repeats the current item. During an attempt F7 replays the
 previous item; outside an attempt it shows local session history. F10 aborts
 the attempt or exits the program.
 
+The call-filter page can generate zero-padded three-, four-, or five-digit
+contest serial exchanges in place of a callsign database. These serial-copy
+sessions are training-only and are not comparable toplist entries.
+
 Only completed, ordinary 50-call sessions are added to the comparable local
 toplist. Fixed-speed, unlimited-repeat, non-50-call, adaptive, missed-item
-review, and seeded sessions remain in history but are toplist-ineligible.
+review, serial-copy, and seeded sessions remain in history but are
+toplist-ineligible.
 Aborted sessions are excluded, and an optional accuracy goal must be met.
+
+.SH OPTIONS
+.TP
+.B --version
+Print the QRQ version to the console and exit.
 
 A scoreboard/toplist exists on the author's website, at
 https://fkurz.net/ham/qrqtop.php. The local toplist file can be synchronized

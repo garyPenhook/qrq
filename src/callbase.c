@@ -107,6 +107,48 @@ void qrq_callbase_free(struct qrq_callbase *callbase) {
 	callbase->max_length = 0;
 }
 
+int qrq_callbase_generate_serials(unsigned int digits,
+		struct qrq_callbase *callbase) {
+	char serial[QRQ_SERIAL_DIGITS_MAX + 1];
+	size_t count = 1;
+	size_t index;
+
+	if (callbase == NULL || digits < QRQ_SERIAL_DIGITS_MIN ||
+			digits > QRQ_SERIAL_DIGITS_MAX) {
+		errno = EINVAL;
+		return -1;
+	}
+	callbase->items = NULL;
+	callbase->count = 0;
+	callbase->max_length = 0;
+	for (index = 0; index < digits; ++index) {
+		count *= 10;
+	}
+	callbase->items = calloc(count, sizeof(*callbase->items));
+	if (callbase->items == NULL) {
+		return -1;
+	}
+	callbase->count = count;
+	callbase->max_length = digits;
+	for (index = 0; index < count; ++index) {
+		int written = snprintf(serial, sizeof(serial), "%0*u", (int)digits,
+				(unsigned int)index);
+
+		if (written != (int)digits) {
+			errno = EOVERFLOW;
+			qrq_callbase_free(callbase);
+			return -1;
+		}
+		callbase->items[index] = malloc((size_t)written + 1);
+		if (callbase->items[index] == NULL) {
+			qrq_callbase_free(callbase);
+			return -1;
+		}
+		memcpy(callbase->items[index], serial, (size_t)written + 1);
+	}
+	return 0;
+}
+
 int qrq_callbase_retain_symbols(struct qrq_callbase *callbase,
 		const char *symbols) {
 	size_t kept = 0;
