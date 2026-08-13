@@ -53,11 +53,23 @@ practice.
 
 ## Phase 4: Feedback and statistics
 
-- [~] Record response time and per-item accuracy in a versioned history format.
-  Versioned local CSV now records each session; per-item response timing remains.
+- [x] Record response time and per-item accuracy in a versioned history format.
+  Each completed item is stored locally; F7 shows current-callsign item
+  accuracy, average answer time, and the most frequently missed item.
 - [x] Add in-program score, speed, and accuracy trends without requiring
   gnuplot. F7 now shows local history summaries when available.
-- Add character-confusion and frequently-missed-item views.
+- [x] Add a persistent character-confusion view. F7 shows the most frequent
+  sent-to-entered substitutions, omissions, and extra characters for the
+  current callsign.
+- [x] Add a frequently-missed-item view and optional confusion-focused drill.
+  Focus mode selects loaded items containing symbols from the operator's most
+  common copy differences and is explicitly toplist-ineligible.
+- [x] Add a persistent spaced-review mode. It derives due items from the
+  local item history using expanding success intervals and remains
+  toplist-ineligible.
+- [x] Add delayed-answer batch copy. It sends up to five calls before input,
+  building short-term retention for contest and pileup operation; repeats are
+  unavailable and these sessions are toplist-ineligible.
 - Support history export and import.
 
 ## Phase 5: Advanced practice and UX
@@ -65,7 +77,8 @@ practice.
 - [~] Configurable pitch range, volume, spacing, and independent rise/fall times.
   F5 now exposes volume, QRN, fixed/random pitch, and the common rise/fall time;
   independent shaping and additional spacing controls need audio design.
-- Optional QRM, QRN, fading, and pileup simulation.
+- [~] Optional QRM, QRN, fading, and pileup simulation. QRN and configurable
+  QSB-style fading are available; QRM and pileup remain.
 - [~] Terminal resize handling, configurable keys, and accessible color themes.
   POSIX terminals now refresh ncurses state after SIGWINCH; configurable keys
   and themes remain.

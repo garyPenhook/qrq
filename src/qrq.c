@@ -53,6 +53,7 @@ typedef int AUDIO_HANDLE;
 #include <stdio.h>
 #ifndef WIN32
 #include <signal.h>
+#include <sys/time.h>
 #endif
 #ifdef WIN32
 #include <windows.h>
@@ -106,6 +107,8 @@ typedef void *AUDIO_HANDLE;
 #include "callbase.h"
 #include "practice.h"
 #include "history.h"
+#include "confusion.h"
+#include "item_history.h"
 #include "config.h"
 
 /* callsign array will be dynamically allocated */
@@ -113,6 +116,7 @@ static char **calls = NULL;
 static size_t calls_allocated = 0;
 static unsigned char *call_used = NULL;
 static unsigned char *call_mistakes = NULL;
+static unsigned char *call_spaced_due = NULL;
 static struct qrq_review_queue review_queue = {0};
 static struct qrq_callbase loaded_callbase = {0};
 
@@ -155,6 +159,8 @@ static int ctonefreq=800;               /* if constanttone=1 use this freq */
 static int volume=100;                  /* output gain as a percentage */
 static int qrnlevel=0;                  /* background noise as a percentage */
 static uint32_t qrn_state=0x6d2b79f5U;  /* separate from practice rand() state */
+static int qsblevel=0;                  /* signal fade depth as a percentage */
+static double qsb_phase=0.0;
 static int minpitch=500;
 static int maxpitch=900;
 static int f6=0;						/* f6 = 1: allow unlimited repeats */
@@ -169,6 +175,11 @@ static int portablemode=0;
 static char allowedchars[CALL_MAX + 1]="";
 static int adaptiveselection=0;
 static int reviewmisses=0;
+static int focusconfusions=0;
+static int focusconfusions_active=0;
+static int spacedrepetition=0;
+static size_t spaced_due_count=0;
+static int answerbatch=1;
 static int accuracytarget=0;
 static unsigned int sessionseed=0;
 static int attemptvalid=1;				/* 1 = not using any "cheats" */
@@ -233,6 +244,7 @@ static void apply_terminal_resize(void);
 #endif
 static int validchar(int c);
 static void free_calls(void);
+static void apply_confusion_focus(void);
 static int copy_file(const char *source_path, const char *destination_path);
 static int write_file_atomic(const char *path, const void *data, size_t length);
 #ifdef OSX_BUNDLE
@@ -261,6 +273,33 @@ static int is_sending_complete(void) {
 	pthread_mutex_unlock(&sending_complete_mutex);
 	return complete;
 #endif
+}
+
+static uint64_t timestamp_milliseconds(void) {
+#ifdef WIN32
+	return (uint64_t)GetTickCount64();
+#else
+	struct timeval timestamp;
+
+	if (gettimeofday(&timestamp, NULL) != 0 || timestamp.tv_sec < 0 ||
+			timestamp.tv_usec < 0 || timestamp.tv_usec >= 1000000L ||
+			(uint64_t)timestamp.tv_sec > UINT64_MAX / 1000U) {
+		return 0;
+	}
+	return (uint64_t)timestamp.tv_sec * 1000U +
+			(uint64_t)timestamp.tv_usec / 1000U;
+#endif
+}
+
+static uint64_t elapsed_milliseconds(uint64_t started, uint64_t finished) {
+	return finished >= started ? finished - started : 0;
+}
+
+static uint64_t add_elapsed_milliseconds(uint64_t total, uint64_t started,
+		uint64_t finished) {
+	uint64_t elapsed = elapsed_milliseconds(started, finished);
+
+	return total > UINT64_MAX - elapsed ? UINT64_MAX : total + elapsed;
 }
 
 
@@ -344,6 +383,8 @@ static void wait_morse_thread(void) {
 char rcfilename[PATH_MAX]="";			/* filename and path to qrqrc */
 char tlfilename[PATH_MAX]="";			/* filename and path to toplist */
 char historyfilename[PATH_MAX]="";
+char confusionfilename[PATH_MAX]="";
+char itemhistoryfilename[PATH_MAX]="";
 char cbfilename[PATH_MAX]="";			/* filename and path to callbase */
 char sumfilepath[PATH_MAX]="";			/* path where to save summary files for each attempt */
 
@@ -394,9 +435,22 @@ int main (int argc, char *argv[]) {
 	int made_error;
 	int i=0,j=0,k=0;						/* counter etc. */
 	int attempt_limit;
+	int batch_indices[QRQ_PRACTICE_MAX_ANSWER_BATCH];
+	int batch_frequencies[QRQ_PRACTICE_MAX_ANSWER_BATCH];
+	int batch_start;
+	int session_answerbatch;
+	int stop_attempt;
+	size_t batch_count;
+	size_t batch_position;
+	size_t batch_target;
 	char previouscall[CALL_MAX + 1]="";
 	int previousfreq = 0;
 	int f6pressed=0;
+	uint64_t response_started_ms;
+	uint64_t replay_started_ms;
+	uint64_t replay_duration_ms;
+	uint64_t response_finished_ms;
+	uint64_t response_ms;
 
 	if (argc > 1) {
 		help();
@@ -433,6 +487,18 @@ int main (int argc, char *argv[]) {
 		fprintf(stderr, "History filename is too long.\n");
 		return EXIT_FAILURE;
 	}
+	if (snprintf(confusionfilename, sizeof(confusionfilename), "%s.confusions.csv",
+			tlfilename) >= (int)sizeof(confusionfilename)) {
+		endwin();
+		fprintf(stderr, "Confusion-history filename is too long.\n");
+		return EXIT_FAILURE;
+	}
+	if (snprintf(itemhistoryfilename, sizeof(itemhistoryfilename), "%s.items.csv",
+			tlfilename) >= (int)sizeof(itemhistoryfilename)) {
+		endwin();
+		fprintf(stderr, "Item-history filename is too long.\n");
+		return EXIT_FAILURE;
+	}
 
 	/* check if the toplist is in the suitable format. as of 0.0.7, each line
 	 * is 31 characters long, with the added time stamp */
@@ -455,7 +521,7 @@ int main (int argc, char *argv[]) {
 	read_config();
 
 	attemptvalid = 1;
-	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses || sessionseed != 0) {
+	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses || focusconfusions || spacedrepetition || answerbatch != 1 || sessionseed != 0) {
 		attemptvalid = 0;	
 	}
 
@@ -537,7 +603,7 @@ while (status == 1) {
 	mvwaddstr(mid_w,11,2, "F8 toggles showing only your results in the toplist.");
 	mvwaddstr(mid_w,12,2, "Settings can be changed with F5 (or in qrqrc).");
 #ifndef WIN32
-	mvwaddstr(mid_w,14,2, "Score statistics (requires gnuplot) with F7.");
+	mvwaddstr(mid_w,14,2, "Practice statistics and copy differences with F7.");
 #endif
 
 	wattron(right_w,A_BOLD);
@@ -616,6 +682,7 @@ while (status == 1) {
 	if (sessionseed != 0) {
 		srand(sessionseed);
 	}
+	session_answerbatch = answerbatch;
 
 	/****** send a configured number of calls, ask for input, score ******/
     start_summary_file();
@@ -630,120 +697,195 @@ while (status == 1) {
 	}
 	qrq_review_queue_clear(&review_queue);
 
-    for (callnr=1; callnr <= attempt_limit; callnr++) {
-		/* Make sure the previous transmission has completed. */
-		wait_morse_thread();
-		/* select an unused callsign from the calls-array */
-		if (reviewmisses && callnr % QRQ_REVIEW_INTERVAL == 0 &&
-				qrq_review_queue_take(&review_queue, &selected_index)) {
-			if (selected_index > (size_t)INT_MAX) {
-				fprintf(stderr, "Review queue contains an invalid callbase index.\n");
+	for (callnr = 1, stop_attempt = 0;
+			callnr <= attempt_limit && !stop_attempt;) {
+		batch_start = callnr;
+		batch_target = qrq_practice_answer_batch_size(
+				(size_t)(attempt_limit - callnr + 1), session_answerbatch);
+		batch_count = 0;
+
+		/* Send one or more items before accepting any entry. Reserving each
+		 * selected item prevents duplicate calls within a delayed batch. */
+		while (batch_count < batch_target && callnr <= attempt_limit) {
+			wait_morse_thread();
+			if (reviewmisses && callnr % QRQ_REVIEW_INTERVAL == 0 &&
+					qrq_review_queue_take(&review_queue, &selected_index)) {
+				if (selected_index > (size_t)INT_MAX) {
+					fprintf(stderr, "Review queue contains an invalid callbase index.\n");
+					stop_attempt = 1;
+					break;
+				}
+				i = (int)selected_index; /* Review entries may already be marked used. */
+			} else {
+				selected_index = qrq_practice_choose_scheduled(nrofcalls, call_used,
+						call_mistakes, adaptiveselection, call_spaced_due,
+						spacedrepetition, (uint32_t)rand());
+				if (selected_index == QRQ_PRACTICE_NO_ITEM ||
+						selected_index > (size_t)INT_MAX) {
+					i = -1;
+				} else {
+					i = (int)selected_index;
+				}
+			}
+			if (i < 0) {
+				fprintf(stderr, "No unused callbase entries remain.\n");
+				stop_attempt = 1;
 				break;
 			}
-			i = (int)selected_index; /* Review entries may already be marked used. */
-		}
-		else {
-			selected_index = qrq_practice_choose(nrofcalls, call_used,
-					call_mistakes, adaptiveselection, (uint32_t)rand());
-			if (selected_index == QRQ_PRACTICE_NO_ITEM ||
-					selected_index > (size_t)INT_MAX) {
-				i = -1;
-			} else {
-				i = (int)selected_index;
-			}
-		}
-		if (i < 0) {
-			fprintf(stderr, "No unused callbase entries remain.\n");
-			break;
-		}
-
-		/* output frequency handling a) random b) fixed */
-		if ( constanttone == 0 ) {
+			if (constanttone == 0) {
 				freq = minpitch + (int)((unsigned int)rand() %
 						(unsigned int)(maxpitch - minpitch + 1));
-		}
-		else { /* fixed frequency */
+			} else {
 				freq = ctonefreq;
+			}
+			batch_indices[batch_count] = i;
+			batch_frequencies[batch_count] = freq;
+			call_used[i] = 1;
+			mvwaddstr(bot_w, 1, 1, "                                                          ");
+			if (session_answerbatch > 1) {
+				mvwprintw(bot_w, 1, 1, "Copying batch: call %d of %d", callnr,
+						attempt_limit);
+			} else {
+				mvwprintw(bot_w, 1, 1, "%3d/%s", callnr,
+						unlimitedattempt ? "-" : "");
+				if (!unlimitedattempt) {
+					wprintw(bot_w, "%d", attempt_limit);
+				}
+			}
+			wrefresh(bot_w);
+			if (session_answerbatch == 1) {
+				response_started_ms = timestamp_milliseconds();
+			}
+			start_morse_thread(calls[i]);
+			batch_count++;
+			callnr++;
+		}
+		if (batch_count == 0) {
+			break;
+		}
+		if (session_answerbatch > 1) {
+			wait_morse_thread();
 		}
 
-		mvwprintw(bot_w,1,1,"                                      ");
-		mvwprintw(bot_w, 1, 1, "%3d/%s", callnr, unlimitedattempt ? "-" : "");
-		if (!unlimitedattempt) {
-			wprintw(bot_w, "%d", attempt_limit);
-		}
-		wrefresh(bot_w);	
-		tmp[0]='\0';
+		for (batch_position = 0; batch_position < batch_count; ++batch_position) {
+			i = batch_indices[batch_position];
+			freq = batch_frequencies[batch_position];
+			callnr = batch_start + (int)batch_position;
+			mvwaddstr(bot_w, 1, 1, "                                                          ");
+			mvwprintw(bot_w, 1, 1, "%3d/%s", callnr, unlimitedattempt ? "-" : "");
+			if (!unlimitedattempt) {
+				wprintw(bot_w, "%d", attempt_limit);
+			}
+			if (session_answerbatch > 1) {
+				mvwaddstr(bot_w, 1, 30, "F6/F7 unavailable");
+				response_started_ms = timestamp_milliseconds();
+			}
+			wrefresh(bot_w);
+			tmp[0] = '\0';
+			replay_started_ms = 0;
+			replay_duration_ms = 0;
+			f6pressed = 0;
 
-		/* starting the morse output in a separate process to make keyboard
-		 * input and echoing at the same time possible */
-		
-		start_morse_thread(calls[i]);
-		
-		f6pressed=0;
-
-		while (!abort && (j = readline(bot_w, 1, 8, input, CAPITALS_ON,
-				sizeof(input), CALL_MAX, 0)) > 4) {/* F5..F10 pressed */
-
-			switch (j) {
-				case 6:		/* repeat call */
-				if (f6pressed && (f6 == 0)) {
+			while (!abort && (j = readline(bot_w, 1, 8, input, CAPITALS_ON,
+					sizeof(input), CALL_MAX, 0)) > 4) {
+				if (session_answerbatch > 1 && (j == 6 || j == 7)) {
+					mvwaddstr(bot_w, 1, 30, "F6/F7 unavailable");
+					wrefresh(bot_w);
 					continue;
 				}
-				f6pressed=1;
-				/* wait for old cwthread to finish, then send call again */
+				switch (j) {
+					case 6:
+						if (f6pressed && f6 == 0) {
+							continue;
+						}
+						f6pressed = 1;
+						wait_morse_thread();
+						if (replay_started_ms != 0) {
+							replay_duration_ms = add_elapsed_milliseconds(
+									replay_duration_ms, replay_started_ms,
+									timestamp_milliseconds());
+						}
+						start_morse_thread(calls[i]);
+						replay_started_ms = timestamp_milliseconds();
+						break;
+					case 7:
+						if (callnr > 1) {
+							k = freq;
+							freq = previousfreq;
+							wait_morse_thread();
+							if (replay_started_ms != 0) {
+								replay_duration_ms = add_elapsed_milliseconds(
+										replay_duration_ms, replay_started_ms,
+										timestamp_milliseconds());
+								replay_started_ms = 0;
+							}
+							replay_started_ms = timestamp_milliseconds();
+							start_morse_thread(previouscall);
+							wait_morse_thread();
+							replay_duration_ms = add_elapsed_milliseconds(
+									replay_duration_ms, replay_started_ms,
+									timestamp_milliseconds());
+							replay_started_ms = 0;
+							freq = k;
+						}
+						break;
+					case 10:
+						abort = 1;
+						break;
+				}
+			}
+			if (abort) {
+				abort = 0;
+				input[0] = '\0';
+				stop_attempt = 1;
+				break;
+			}
+			response_finished_ms = timestamp_milliseconds();
+			if (replay_started_ms != 0) {
 				wait_morse_thread();
-				start_morse_thread(calls[i]);
-					break; /* 6*/
-				case 7:		/* repeat _previous_ call */
-					if (callnr > 1) {
-						k = freq;
-						freq = previousfreq;
-						wait_morse_thread();
-						start_morse_thread(previouscall);
-						wait_morse_thread();
-						/* NB: We must wait for the CW thread before
-						 * we set the freq back -- this blocks keyboard
-						 * input, but in this case it shouldn't matter */
-						freq = k;
-					}
-					break;
-				case 10:	/* abort attempt */
-					abort = 1;
-					continue;
-					break;
+				response_finished_ms = timestamp_milliseconds();
+				replay_duration_ms = add_elapsed_milliseconds(replay_duration_ms,
+						replay_started_ms, response_finished_ms);
 			}
-					
-		}
+			response_ms = elapsed_milliseconds(response_started_ms, response_finished_ms);
+			response_ms = response_ms >= replay_duration_ms ?
+					response_ms - replay_duration_ms : 0;
 
-		
-		if (abort) {
-			abort = 0;
-			input[0]='\0';
-			break;
-		}
-		
-		tmp[0]='\0';
-		score = qrq_score_accumulate(score,
-				calc_score(calls[i], input, speed, tmp, f6pressed));
-		completedcalls++;
-		update_score();
-		made_error = strcmp(tmp, "-") != 0;
-		if (qrq_practice_record_result(nrofcalls, call_used,
-				call_mistakes, (size_t)i, !made_error, adaptiveselection) != 0) {
-			fprintf(stderr, "Unable to record practice result.\n");
-			break;
-		}
-		if (made_error) {
-			if (reviewmisses && qrq_review_queue_push(&review_queue, (size_t)i) != 0) {
-				fprintf(stderr, "Unable to queue missed call for review.\n");
+			score = qrq_score_accumulate(score,
+					calc_score(calls[i], input, speed, tmp, f6pressed));
+			completedcalls++;
+			update_score();
+			made_error = strcmp(tmp, "-") != 0;
+			if (qrq_item_history_append(itemhistoryfilename, mycall, calls[i],
+					!made_error, response_ms) != 0) {
+				fprintf(stderr, "Unable to record item history in %s.\n",
+						itemhistoryfilename);
 			}
+			if (qrq_practice_record_result(nrofcalls, call_used, call_mistakes,
+					(size_t)i, !made_error, adaptiveselection) != 0) {
+				fprintf(stderr, "Unable to record practice result.\n");
+				stop_attempt = 1;
+				break;
+			}
+			if (made_error) {
+				if (qrq_confusion_append(confusionfilename, mycall, calls[i], input) != 0) {
+					fprintf(stderr, "Unable to record copy differences in %s.\n",
+							confusionfilename);
+				}
+				if (reviewmisses && qrq_review_queue_push(&review_queue, (size_t)i) != 0) {
+					fprintf(stderr, "Unable to queue missed call for review.\n");
+				}
 				show_error(calls[i], tmp);
-                if (stoponerror)
-                    getch();
+				if (stoponerror) {
+					getch();
+				}
+			}
+			input[0] = '\0';
+			strncpy(previouscall, calls[i], CALL_MAX);
+			previouscall[CALL_MAX] = '\0';
+			previousfreq = freq;
 		}
-		input[0]='\0';
-		strncpy(previouscall, calls[i], CALL_MAX);
-		previousfreq = freq;
+		callnr = batch_start + (int)batch_count;
 	}
 
     close_summary_file();
@@ -820,11 +962,13 @@ while ((j = getch()) != 0) {
 		parameter_page = (parameter_page + 1) % 3;
 		handled = 1;
 	} else if (parameter_page == 1) {
-		switch (j) {
-			case 'v': volume = volume >= 5 ? volume - 5 : 0; handled = 1; break;
-			case 'V': volume = volume <= 95 ? volume + 5 : 100; handled = 1; break;
-			case 'n': qrnlevel = qrnlevel >= 5 ? qrnlevel - 5 : 0; handled = 1; break;
-			case 'N': qrnlevel = qrnlevel <= 95 ? qrnlevel + 5 : 100; handled = 1; break;
+			switch (j) {
+				case 'v': volume = volume >= 5 ? volume - 5 : 0; handled = 1; break;
+				case 'V': volume = volume <= 95 ? volume + 5 : 100; handled = 1; break;
+				case 'n': qrnlevel = qrnlevel >= 5 ? qrnlevel - 5 : 0; handled = 1; break;
+				case 'N': qrnlevel = qrnlevel <= 95 ? qrnlevel + 5 : 100; handled = 1; break;
+				case 'q': qsblevel = qsblevel >= 5 ? qsblevel - 5 : 0; handled = 1; break;
+				case 'Q': qsblevel = qsblevel <= 95 ? qsblevel + 5 : 100; handled = 1; break;
 			case 'h':
 				if (minpitch < maxpitch) {
 					minpitch = minpitch <= maxpitch - 10 ? minpitch + 10 : maxpitch;
@@ -900,6 +1044,13 @@ while ((j = getch()) != 0) {
 				handled = 1;
 				break;
 			}
+			case 'h': focusconfusions = (focusconfusions ? 0 : 1); handled = 1; break;
+			case 'm': spacedrepetition = (spacedrepetition ? 0 : 1); handled = 1; break;
+			case 'b':
+				answerbatch = answerbatch == QRQ_PRACTICE_MAX_ANSWER_BATCH ? 1 :
+						answerbatch + 1;
+				handled = 1;
+				break;
 		}
 	}
 	if (!handled && parameter_page != 0 && j != KEY_F(2) &&
@@ -1091,7 +1242,7 @@ while ((j = getch()) != 0) {
 	if (!callnr) {
 		attemptvalid = 1;
 	}
-	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses || sessionseed != 0) {
+	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses || focusconfusions || spacedrepetition || answerbatch != 1 || sessionseed != 0) {
 		attemptvalid = 0;	
 	}
 
@@ -1133,12 +1284,13 @@ void update_parameter_dialog (void) {
 		wattroff(conf_w, A_BOLD);
 		mvwprintw(conf_w, 2, 2, "Output volume:              %3d %%       v/V -/+", volume);
 		mvwprintw(conf_w, 3, 2, "QRN noise level:            %3d %%       n/N -/+", qrnlevel);
-		mvwprintw(conf_w, 4, 2, "Random pitch minimum:      %4d Hz      H/h -/+", minpitch);
-		mvwprintw(conf_w, 5, 2, "Random pitch maximum:      %4d Hz      J/j -/+", maxpitch);
-		mvwprintw(conf_w, 6, 2, "Audio sample rate:       %6ld Hz      qrqrc", samplerate);
-		mvwprintw(conf_w, 7, 2, "Rise/fall and waveform controls are on page 1.");
+		mvwprintw(conf_w, 4, 2, "QSB fade depth:            %3d %%       q/Q -/+", qsblevel);
+		mvwprintw(conf_w, 5, 2, "Random pitch minimum:      %4d Hz      H/h -/+", minpitch);
+		mvwprintw(conf_w, 6, 2, "Random pitch maximum:      %4d Hz      J/j -/+", maxpitch);
+		mvwprintw(conf_w, 7, 2, "Audio sample rate:       %6ld Hz      qrqrc", samplerate);
+		mvwprintw(conf_w, 8, 2, "Rise/fall and waveform controls are on page 1.");
 #ifdef OSS
-		mvwprintw(conf_w, 8, 2, "DSP device: %-27.27s e", dspdevice);
+		mvwprintw(conf_w, 9, 2, "DSP device: %-27.27s e", dspdevice);
 #endif
 		mvwprintw(conf_w, 15, 4, ": Play CW sample");
 		mvwprintw(conf_w, 15, 25, ": Save config");
@@ -1163,10 +1315,15 @@ void update_parameter_dialog (void) {
 		mvwprintw(conf_w, 7, 2, "Allowed chars: %-25.25s y", allowedchars[0] ? allowedchars : "(any)");
 		mvwprintw(conf_w, 8, 2, "Session seed*:            %-10u %s", sessionseed,
 				callnr ? "next session" : "z");
+		mvwprintw(conf_w, 9, 2, "Focus confusions*:        %-3s h",
+				focusconfusions ? "yes" : "no");
+		mvwprintw(conf_w, 10, 2, "Spaced review*:           %-3s m",
+				spacedrepetition ? "yes" : "no");
+		mvwprintw(conf_w, 11, 2, "Answer batch*:            %-3d b", answerbatch);
 		if (!callnr) {
-			mvwprintw(conf_w, 9, 2, "Callsign database: %-24.24s d", basename(cbfilename));
+			mvwprintw(conf_w, 12, 2, "Callsign database: %-24.24s d", basename(cbfilename));
 		}
-		mvwprintw(conf_w, 11, 2, "Filters take effect when the next session loads.");
+		mvwaddstr(conf_w, 13, 2, "Filters and training modes apply to the next session.");
 		mvwprintw(conf_w, 15, 4, ": Play CW sample");
 		mvwprintw(conf_w, 15, 25, ": Save config");
 		mvwprintw(conf_w, 15, 44, ": Exit");
@@ -1687,6 +1844,19 @@ static int update_score(void) {
 	if (attemptvalid) {
 		mvwprintw(top_w, 1, 27, "%6d", score);	
 	}
+	else if (focusconfusions_active) {
+		mvwprintw(top_w, 1, 27, "[focus drills]");
+	}
+	else if (answerbatch > 1) {
+		mvwprintw(top_w, 1, 27, "[batch copy: %d]", answerbatch);
+	}
+	else if (spacedrepetition) {
+		if (spaced_due_count != 0) {
+			mvwprintw(top_w, 1, 27, "[spaced: %zu due]", spaced_due_count);
+		} else {
+			mvwprintw(top_w, 1, 27, "[spaced review]");
+		}
+	}
 	else {
 		mvwprintw(top_w, 1, 27, "[training mode]");	
 	}
@@ -2063,6 +2233,8 @@ static int read_config(void) {
 			(void)config_int_value(line, key, value, 0, 100, &volume);
 		} else if (strcmp(key, "qrnlevel") == 0) {
 			(void)config_int_value(line, key, value, 0, 100, &qrnlevel);
+		} else if (strcmp(key, "qsblevel") == 0) {
+			(void)config_int_value(line, key, value, 0, 100, &qsblevel);
 		} else if (strcmp(key, "minpitch") == 0) {
 			(void)config_int_value(line, key, value, 100, 4000,
 					&configured_minpitch);
@@ -2083,6 +2255,13 @@ static int read_config(void) {
 			(void)config_int_value(line, key, value, 0, 1, &adaptiveselection);
 		} else if (strcmp(key, "reviewmisses") == 0) {
 			(void)config_int_value(line, key, value, 0, 1, &reviewmisses);
+		} else if (strcmp(key, "focusconfusions") == 0) {
+			(void)config_int_value(line, key, value, 0, 1, &focusconfusions);
+		} else if (strcmp(key, "spacedrepetition") == 0) {
+			(void)config_int_value(line, key, value, 0, 1, &spacedrepetition);
+		} else if (strcmp(key, "answerbatch") == 0) {
+			(void)config_int_value(line, key, value, 1,
+					QRQ_PRACTICE_MAX_ANSWER_BATCH, &answerbatch);
 		} else if (strcmp(key, "callprefixes") == 0) {
 			(void)config_graph_string_value(line, key, value, callprefixes,
 					sizeof(callprefixes));
@@ -2503,6 +2682,15 @@ static int tonegen (int freq, int len, int waveform) {
 		if (x > (len-ed)) {								/* falling edge */
 				val *= pow(sin(2*PI*(x-(len-ed)+ed)/(4*ed)),2); 
 		}
+		if (qsblevel != 0) {
+			double fade = (double)qsblevel / 100.0;
+
+			val *= 1.0 - fade * (0.5 + 0.5 * sin(qsb_phase));
+			qsb_phase += 2.0 * PI * 0.8 / (double)samplerate;
+			if (qsb_phase >= 2.0 * PI) {
+				qsb_phase -= 2.0 * PI;
+			}
+		}
 		
 		if (qrnlevel != 0) {
 			val += qrn_sample() * (qrnlevel / 100.0);
@@ -2539,7 +2727,8 @@ static int save_config (void) {
 		"maxcalllength", "stoponerror", "adaptiveselection", "reviewmisses",
 		"accuracytarget", "callprefixes", "digitmode", "portablemode",
 		"allowedchars", "sessionseed", "volume", "minpitch", "maxpitch",
-		"qrnlevel", "samplerate"
+		"qrnlevel", "qsblevel", "samplerate", "focusconfusions", "spacedrepetition",
+		"answerbatch"
 	};
 	FILE *fh = NULL;
 	char tmp[PATH_MAX + 80];
@@ -2615,7 +2804,11 @@ static int save_config (void) {
 			case 28: written = snprintf(tmp, sizeof(tmp), "%d", minpitch); break;
 			case 29: written = snprintf(tmp, sizeof(tmp), "%d", maxpitch); break;
 			case 30: written = snprintf(tmp, sizeof(tmp), "%d", qrnlevel); break;
-			default: written = snprintf(tmp, sizeof(tmp), "%ld", samplerate); break;
+			case 31: written = snprintf(tmp, sizeof(tmp), "%d", qsblevel); break;
+			case 32: written = snprintf(tmp, sizeof(tmp), "%ld", samplerate); break;
+			case 33: written = snprintf(tmp, sizeof(tmp), "%d", focusconfusions); break;
+			case 34: written = snprintf(tmp, sizeof(tmp), "%d", spacedrepetition); break;
+			default: written = snprintf(tmp, sizeof(tmp), "%d", answerbatch); break;
 		}
 		if (written < 0 || (size_t)written >= sizeof(tmp)) {
 			fprintf(stderr, "Unable to format config option '%s'.\n", confopts[i]);
@@ -3080,9 +3273,17 @@ static int find_files (void) {
 
 static int statistics (void) {
 		struct qrq_history_summary summary;
+		struct qrq_confusion_summary confusion_summary;
+		struct qrq_item_history_summary item_summary;
+		int have_confusions;
+		int have_item_history;
 
 		if (qrq_history_summarize(historyfilename, mycall, &summary) == 0 &&
 				summary.sessions != 0) {
+			have_confusions = qrq_confusion_summarize(confusionfilename, mycall,
+					&confusion_summary) == 0 && confusion_summary.pair_count != 0;
+			have_item_history = qrq_item_history_summarize(itemhistoryfilename, mycall,
+					&item_summary) == 0 && item_summary.attempts != 0;
 			werase(mid_w);
 			box(mid_w, 0, 0);
 			wattron(mid_w, A_BOLD);
@@ -3095,7 +3296,54 @@ static int statistics (void) {
 					summary.best_score, summary.best_speed);
 			mvwprintw(mid_w, 7, 2, "Score trend:       %d -> %d",
 					summary.first_score, summary.last_score);
-			mvwaddstr(mid_w, 10, 2, "Press any key to return.");
+			if (have_item_history) {
+				unsigned int accuracy = (unsigned int)(100.0 *
+						(double)item_summary.correct / (double)item_summary.attempts);
+				unsigned long long average_ms = (unsigned long long)
+						(item_summary.total_response_ms / item_summary.attempts);
+
+				mvwprintw(mid_w, 8, 2, "Items: %u%% correct, %llums average answer time",
+						accuracy, average_ms);
+			}
+			if (have_confusions) {
+				size_t index;
+
+				mvwprintw(mid_w, 9, 2, "Frequent copy differences (%zu total):",
+						confusion_summary.errors);
+				for (index = 0; index < confusion_summary.pair_count && index < 3;
+						index++) {
+					char expected[10];
+					char received[10];
+					const struct qrq_confusion_pair *pair =
+							&confusion_summary.pairs[index];
+
+					if (pair->expected == '\0') {
+						(void)snprintf(expected, sizeof(expected), "extra");
+					} else if (pair->expected == ' ') {
+						(void)snprintf(expected, sizeof(expected), "space");
+					} else {
+						(void)snprintf(expected, sizeof(expected), "%c", pair->expected);
+					}
+					if (pair->received == '\0') {
+						(void)snprintf(received, sizeof(received), "omitted");
+					} else if (pair->received == ' ') {
+						(void)snprintf(received, sizeof(received), "space");
+					} else {
+						(void)snprintf(received, sizeof(received), "%c", pair->received);
+					}
+					mvwprintw(mid_w, 10 + (int)index, 2, "%-8s -> %-8s %zu",
+							expected, received, pair->count);
+				}
+			} else {
+				mvwaddstr(mid_w, 10, 2, "No character-level copy differences recorded yet.");
+			}
+			if (have_item_history && item_summary.difficult_count != 0) {
+				const struct qrq_item_history_item *item = &item_summary.difficult[0];
+
+				mvwprintw(mid_w, 13, 2, "Most missed: %-28.28s (%zu/%zu errors)", item->sent,
+						item->errors, item->attempts);
+			}
+			mvwaddstr(mid_w, 15, 2, "Press any key to return.");
 			wrefresh(mid_w);
 			getch();
 			touchwin(mid_w);
@@ -3209,10 +3457,29 @@ static void free_calls(void) {
 	call_used = NULL;
 	free(call_mistakes);
 	call_mistakes = NULL;
+	free(call_spaced_due);
+	call_spaced_due = NULL;
+	spaced_due_count = 0;
 	qrq_review_queue_clear(&review_queue);
 	qrq_callbase_free(&loaded_callbase);
 	calls = loaded_callbase.items;
 	calls_allocated = 0;
+}
+
+static void apply_confusion_focus(void) {
+	char symbols[QRQ_CONFUSION_TOP_COUNT * 2 + 1];
+	int retain_result;
+
+	focusconfusions_active = 0;
+	if (!focusconfusions ||
+			qrq_confusion_focus_symbols(confusionfilename, mycall, symbols,
+					sizeof(symbols)) != 0 || symbols[0] == '\0') {
+		return;
+	}
+	retain_result = qrq_callbase_retain_symbols(&loaded_callbase, symbols);
+	if (retain_result == 0) {
+		focusconfusions_active = 1;
+	}
 }
 
 static size_t read_callbase(void) {
@@ -3232,15 +3499,30 @@ static size_t read_callbase(void) {
 				cbfilename, strerror(errno));
 		exit(EXIT_FAILURE);
 	}
+	apply_confusion_focus();
 	calls = loaded_callbase.items;
 	calls_allocated = loaded_callbase.count;
 	call_used = calloc(calls_allocated, sizeof(*call_used));
 	call_mistakes = calloc(calls_allocated, sizeof(*call_mistakes));
-	if (call_used == NULL || call_mistakes == NULL) {
+	if (spacedrepetition) {
+		call_spaced_due = calloc(calls_allocated, sizeof(*call_spaced_due));
+	}
+	if (call_used == NULL || call_mistakes == NULL ||
+			(spacedrepetition && call_spaced_due == NULL)) {
 		free_calls();
 		endwin();
 		fprintf(stderr, "Error: Couldn't allocate call usage state.\n");
 		exit(EXIT_FAILURE);
+	}
+	if (spacedrepetition && qrq_item_history_schedule(itemhistoryfilename, mycall,
+				(const char *const *)calls, calls_allocated, call_spaced_due) == 0) {
+		size_t index;
+
+		for (index = 0; index < calls_allocated; ++index) {
+			if (call_spaced_due[index] != 0) {
+				spaced_due_count++;
+			}
+		}
 	}
 	call_maxlen = (int)loaded_callbase.max_length;
 	return loaded_callbase.count;

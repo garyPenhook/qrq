@@ -22,6 +22,11 @@ struct qrq_callbase_filter {
 
 int qrq_callbase_load(const char *path, const struct qrq_callbase_filter *filter,
 		struct qrq_callbase *callbase);
+
+/* Retain items containing at least one character in symbols. Returns one
+ * without changing the callbase when no item would remain. */
+int qrq_callbase_retain_symbols(struct qrq_callbase *callbase,
+		const char *symbols);
 void qrq_callbase_free(struct qrq_callbase *callbase);
 
 #endif

@@ -21,6 +21,12 @@ int main(void) {
 	assert(callbase.count == 3 && callbase.max_length == 5);
 	assert(strcmp(callbase.items[0], "K1ABC") == 0);
 	assert(strcmp(callbase.items[1], "DE") == 0);
+	assert(qrq_callbase_retain_symbols(&callbase, "1O") == 0);
+	assert(callbase.count == 2 && callbase.max_length == 5);
+	assert(strcmp(callbase.items[0], "K1ABC") == 0);
+	assert(strcmp(callbase.items[1], "WORD") == 0);
+	assert(qrq_callbase_retain_symbols(&callbase, "Z") == 1);
+	assert(callbase.count == 2);
 	qrq_callbase_free(&callbase);
 
 	filter.minimum_length = 3;
