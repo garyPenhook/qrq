@@ -38,6 +38,29 @@ int main(void) {
 	assert(strcmp(callbase.items[2], "K1ABC/MM") == 0);
 	assert(strcmp(callbase.items[3], "DE/P") == 0);
 	qrq_callbase_free(&callbase);
+	errno = 0;
+	assert(qrq_callbase_generate_items(NULL, &callbase) == -1 && errno == EINVAL);
+	errno = 0;
+	assert(qrq_callbase_generate_items("", &callbase) == -1 && errno == ENODATA);
+	assert(qrq_callbase_load(path, &filter, &callbase) == 0);
+	assert(qrq_callbase_generate_items(" cq test , 5nn , ?, /P ",
+			&callbase) == 0);
+	assert(callbase.count == 4 && callbase.max_length == 7);
+	assert(strcmp(callbase.items[0], "CQ TEST") == 0);
+	assert(strcmp(callbase.items[1], "5NN") == 0);
+	assert(strcmp(callbase.items[2], "?") == 0);
+	assert(strcmp(callbase.items[3], "/P") == 0);
+	qrq_callbase_free(&callbase);
+	assert(qrq_callbase_generate_items("CQ,   ", &callbase) == 0);
+	assert(callbase.count == 1 && strcmp(callbase.items[0], "CQ") == 0);
+	qrq_callbase_free(&callbase);
+	assert(qrq_callbase_load(path, &filter, &callbase) == 0);
+	errno = 0;
+	assert(qrq_callbase_generate_items("CQ,,TU", &callbase) == -1 && errno == EINVAL);
+	assert(callbase.count == 3 && strcmp(callbase.items[0], "K1ABC") == 0);
+	qrq_callbase_free(&callbase);
+	errno = 0;
+	assert(qrq_callbase_generate_items("CQ,@", &callbase) == -1 && errno == EINVAL);
 
 	errno = 0;
 	assert(qrq_callbase_generate_serials(2, &callbase) == -1 && errno == EINVAL);

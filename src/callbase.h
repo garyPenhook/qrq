@@ -34,6 +34,12 @@ int qrq_callbase_generate_serials(unsigned int digits,
 /* Replace eligible base calls with portable /P, /M, and /MM variants. */
 int qrq_callbase_generate_portable_variants(struct qrq_callbase *callbase);
 
+/* Replace a callbase with comma-separated, operator-defined CW practice
+ * items. Whitespace around each item is ignored; valid items are normalized
+ * to uppercase and must fit within QRQ_CALLBASE_MAX_LENGTH. */
+int qrq_callbase_generate_items(const char *source,
+		struct qrq_callbase *callbase);
+
 /* Retain items containing at least one character in symbols. Returns one
  * without changing the callbase when no item would remain. */
 int qrq_callbase_retain_symbols(struct qrq_callbase *callbase,

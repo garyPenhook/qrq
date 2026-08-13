@@ -26,7 +26,8 @@ configured down step. A character-speed floor enables Farnsworth spacing when
 the overall speed falls below it. Points depend on speed and copy accuracy.
 
 F5 opens three settings pages; Tab selects general, audio, or call-filter
-settings. F6 repeats the current item. During an attempt F7 replays the
+settings. F6 repeats the current item once by default; the optional f6 setting
+allows additional resends. During an attempt F7 replays the
 previous item; outside an attempt it shows local session history. F10 aborts
 the attempt or exits the program.
 
@@ -38,6 +39,12 @@ The W4GNS portable-call generator replaces eligible base calls with /P, /M,
 and /MM variants. It overrides the ordinary portable-suffix filter and is a
 training-only, non-comparable session.
 
+The W4GNS custom-item generator accepts a comma-separated list such as
+CQ,DE,5NN,? and replaces the selected database and other generators. Items
+are normalized to uppercase, may include CW punctuation and spaces, and are
+limited to 28 characters. Custom-item sessions are training-only and
+non-comparable.
+
 W4GNS sustained-copy goals combine a target speed with a duration. The goal
 passes only when the operator remains at or above the configured speed until
 the duration expires; QRQ reports a concise result and next-step recommendation.
@@ -45,8 +52,8 @@ Sustained goals are training-only and are not comparable toplist entries.
 
 Only completed, ordinary 50-call sessions are added to the comparable local
 toplist. Fixed-speed, unlimited-repeat, non-50-call, adaptive, missed-item
-review, serial-copy, portable-variant, sustained-goal, and seeded sessions
-remain in history but are toplist-ineligible.
+review, serial-copy, portable-variant, custom-item, sustained-goal, and
+seeded sessions remain in history but are toplist-ineligible.
 Aborted sessions are excluded, and an optional accuracy goal must be met.
 
 .SH OPTIONS

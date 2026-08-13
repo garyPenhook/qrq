@@ -244,6 +244,131 @@ int qrq_callbase_generate_portable_variants(struct qrq_callbase *callbase) {
 	return 0;
 }
 
+static int practice_item_character(int character) {
+	return isalpha((unsigned char)character) ||
+			isdigit((unsigned char)character) || character == ' ' ||
+			character == '/' || character == '-' || character == '.' ||
+			character == '=' || character == '?';
+}
+
+/* Return one trimmed comma-separated item, zero at the end, or -1 for a
+ * malformed item. A trailing comma is accepted for convenient configuration
+ * editing, but empty items between commas are rejected. */
+static int next_practice_item(const char **cursor, const char **item,
+		size_t *length) {
+	const char *start;
+	const char *end;
+	const char *trimmed_end;
+
+	if (cursor == NULL || *cursor == NULL || item == NULL || length == NULL) {
+		errno = EINVAL;
+		return -1;
+	}
+	if (**cursor == '\0') {
+		return 0;
+	}
+	start = *cursor;
+	while (*start != '\0' && isspace((unsigned char)*start)) {
+		start++;
+	}
+	if (*start == '\0') {
+		*cursor = start;
+		return 0;
+	}
+	end = start;
+	while (*end != '\0' && *end != ',') {
+		end++;
+	}
+	trimmed_end = end;
+	while (trimmed_end > start && isspace((unsigned char)trimmed_end[-1])) {
+		trimmed_end--;
+	}
+	*cursor = *end == ',' ? end + 1 : end;
+	if (trimmed_end == start ||
+			(size_t)(trimmed_end - start) > QRQ_CALLBASE_MAX_LENGTH) {
+		errno = EINVAL;
+		return -1;
+	}
+	for (end = start; end < trimmed_end; ++end) {
+		if (!practice_item_character((unsigned char)*end)) {
+			errno = EINVAL;
+			return -1;
+		}
+	}
+	*item = start;
+	*length = (size_t)(trimmed_end - start);
+	return 1;
+}
+
+int qrq_callbase_generate_items(const char *source,
+		struct qrq_callbase *callbase) {
+	const char *cursor;
+	const char *item;
+	char **items;
+	size_t count = 0;
+	size_t max_length = 0;
+	size_t length;
+	size_t index = 0;
+	int item_result;
+
+	if (source == NULL || callbase == NULL) {
+		errno = EINVAL;
+		return -1;
+	}
+	cursor = source;
+	while ((item_result = next_practice_item(&cursor, &item, &length)) > 0) {
+		if (count == SIZE_MAX || count == SIZE_MAX / sizeof(*items)) {
+			errno = EOVERFLOW;
+			return -1;
+		}
+		count++;
+		if (length > max_length) {
+			max_length = length;
+		}
+	}
+	if (item_result < 0) {
+		return -1;
+	}
+	if (count == 0) {
+		errno = ENODATA;
+		return -1;
+	}
+	items = calloc(count, sizeof(*items));
+	if (items == NULL) {
+		return -1;
+	}
+	cursor = source;
+	while ((item_result = next_practice_item(&cursor, &item, &length)) > 0) {
+		size_t character;
+
+		items[index] = malloc(length + 1);
+		if (items[index] == NULL) {
+			while (index != 0) {
+				free(items[--index]);
+			}
+			free(items);
+			return -1;
+		}
+		for (character = 0; character < length; ++character) {
+			items[index][character] = (char)toupper((unsigned char)item[character]);
+		}
+		items[index][length] = '\0';
+		index++;
+	}
+	if (item_result < 0) {
+		while (index != 0) {
+			free(items[--index]);
+		}
+		free(items);
+		return -1;
+	}
+	qrq_callbase_free(callbase);
+	callbase->items = items;
+	callbase->count = count;
+	callbase->max_length = max_length;
+	return 0;
+}
+
 int qrq_callbase_retain_symbols(struct qrq_callbase *callbase,
 		const char *symbols) {
 	size_t kept = 0;

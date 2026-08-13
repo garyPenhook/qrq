@@ -44,6 +44,10 @@ serialdigits=0
 # and /MM variants. This overrides portablemode while enabled and is
 # training-only.
 portablevariants=0
+# W4GNS custom drill: comma-separated CW items such as CQ,DE,5NN,? or /P.
+# Spaces inside an item are sent as word spaces. Nonempty custom items replace
+# the selected database and all generators for a training-only session.
+customitems=
 # minimum whole-session accuracy for a local toplist entry; 0 disables it
 # values: 0 or 50..100
 accuracytarget=0
@@ -101,9 +105,9 @@ qrmlevel=0
 # QSB-like slow signal fading depth as a percentage (0 = steady signal)
 qsblevel=0
 
-# allow unlimited usage of F6
-# values: 0 = no, 1 = yes
-f6=0   
+# allow additional F6 resends after the standard one repeat
+# values: 0 = one resend per item, 1 = unlimited resends
+f6=0
 
 # use fixed speed in the attempts, regardless of errors
 # values: 0 = no, 1 = yes

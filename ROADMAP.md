@@ -55,6 +55,8 @@ practice.
   serial range for a training-only contest-copy session.
 - [x] Add focused portable-call variants. The W4GNS generator replaces base
   calls with /P, /M, and /MM forms for a training-only suffix-copy session.
+- [x] Add operator-defined CW item drills. W4GNS `customitems` supplies a
+  comma-separated list for focused contest exchanges, prosigns, or punctuation.
 - [x] Add sustained-copy performance goals. W4GNS goals can require a chosen
   speed for 1, 3, 5, or 10 minutes and give an immediate end recommendation.
 

@@ -79,6 +79,7 @@ typedef int AUDIO_HANDLE;
 #define CAPITALS_OFF  0
 
 #define CALL_MAX    28    /* maximum allowed length of a call/word. limit to 28 so we can fit word + correction into the window */
+#define PRACTICE_ITEMS_MAX 256
 
 #ifndef PREFIX
 #	define PREFIX "/usr"
@@ -167,7 +168,7 @@ static struct qrq_qrm_state qrm_state;
 static size_t qrm_dot_samples=1;
 static int minpitch=500;
 static int maxpitch=900;
-static int f6=0;						/* f6 = 1: allow unlimited repeats */
+static int f6=0;						/* f6 = 1: allow resends beyond one repeat */
 static int fixspeed=0;					/* keep speed fixed, regardless of err*/
 static int unlimitedattempt=0;			/* attempt with all calls  of the DB */
 static int sessionlength=50;				/* calls per standard practice session */
@@ -178,6 +179,7 @@ static int digitmode=0;
 static int portablemode=0;
 static int portablevariants=0;
 static char allowedchars[CALL_MAX + 1]="";
+static char practiceitems[PRACTICE_ITEMS_MAX]="";
 static int adaptiveselection=0;
 static int reviewmisses=0;
 static int focusconfusions=0;
@@ -226,7 +228,7 @@ static MORSE_THREAD_RETURN morse(void *arg);
 static int add_to_buf(const void *data, size_t size);
 static double qrn_sample(void);
 static int readline(WINDOW *win, int y, int x, char *line, int capitals,
-		size_t capacity, int display_width, int path_mode);
+		size_t capacity, int display_width, int path_mode, int literal_hyphen);
 static void draw_input_line(WINDOW *win, int y, int x, const char *line,
 		int display_width);
 static WINDOW *create_window(int height, int width, int y, int x);
@@ -542,7 +544,7 @@ int main (int argc, char *argv[]) {
 	read_config();
 
 	attemptvalid = 1;
-	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses || focusconfusions || spacedrepetition || answerbatch != 1 || serialdigits != 0 || portablevariants || sessionseed != 0 || qrq_practice_sustained_goal_active(goalspeed, goalduration)) {
+	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses || focusconfusions || spacedrepetition || answerbatch != 1 || serialdigits != 0 || portablevariants || practiceitems[0] != '\0' || sessionseed != 0 || qrq_practice_sustained_goal_active(goalspeed, goalduration)) {
 		attemptvalid = 0;	
 	}
 
@@ -655,7 +657,7 @@ while (status == 1) {
 	speed = initialspeed;
 	
 	/* prompt for own callsign */
-	i = readline(bot_w, 1, 30, mycall, CAPITALS_ON, sizeof(mycall), 8, 0);
+	i = readline(bot_w, 1, 30, mycall, CAPITALS_ON, sizeof(mycall), 8, 0, 0);
 
 	/* F5 -> Configure sound */
 	if (i == 5) {
@@ -829,7 +831,7 @@ while (status == 1) {
 			f6pressed = 0;
 
 			while (!abort && (j = readline(bot_w, 1, 8, input, CAPITALS_ON,
-					sizeof(input), CALL_MAX, 0)) > 4) {
+					sizeof(input), CALL_MAX, 0, 0)) > 4) {
 				if (session_answerbatch > 1 && (j == 6 || j == 7)) {
 					mvwaddstr(bot_w, 1, 30, "F6/F7 unavailable");
 					wrefresh(bot_w);
@@ -1057,7 +1059,7 @@ while ((j = getch()) != 0) {
 			case 'e':
 				p = 0;
 				readline(conf_w, 8, 25, dspdevice, CAPITALS_OFF,
-						sizeof(dspdevice), 27, 1);
+						sizeof(dspdevice), 27, 1, 1);
 				if (dspdevice[0] == '\0') {
 					strcpy(dspdevice, "/dev/dsp");
 				}
@@ -1075,6 +1077,13 @@ while ((j = getch()) != 0) {
 			case 'i': digitmode = (digitmode + 1) % 3; handled = 1; break;
 			case 'p': portablemode = (portablemode + 1) % 3; handled = 1; break;
 			case 'P': portablevariants = portablevariants ? 0 : 1; handled = 1; break;
+			case 'u':
+				p = 0;
+				readline(conf_w, 12, 17, practiceitems, CAPITALS_ON,
+						sizeof(practiceitems), 27, 0, 1);
+				p = 0;
+				handled = 1;
+				break;
 			case 'd':
 				if (!callnr) {
 					curs_set(1);
@@ -1085,14 +1094,14 @@ while ((j = getch()) != 0) {
 			case 'x':
 				p = 0;
 				readline(conf_w, 6, 25, callprefixes, CAPITALS_ON,
-						sizeof(callprefixes), 25, 0);
+						sizeof(callprefixes), 25, 0, 0);
 				p = 0;
 				handled = 1;
 				break;
 			case 'y':
 				p = 0;
 				readline(conf_w, 7, 25, allowedchars, CAPITALS_ON,
-						sizeof(allowedchars), 25, 0);
+						sizeof(allowedchars), 25, 0, 0);
 				p = 0;
 				handled = 1;
 				break;
@@ -1107,7 +1116,7 @@ while ((j = getch()) != 0) {
 				(void)snprintf(seed_text, sizeof(seed_text), "%u", sessionseed);
 				p = 0;
 				readline(conf_w, 8, 25, seed_text, CAPITALS_OFF,
-						sizeof(seed_text), 15, 0);
+						sizeof(seed_text), 15, 0, 0);
 				if (qrq_config_parse_uint(seed_text, &parsed_seed) == 0) {
 					sessionseed = parsed_seed;
 				}
@@ -1264,7 +1273,7 @@ while ((j = getch()) != 0) {
 			}
 			break;
 		case 'c':
-			readline(conf_w, 6, 25, mycall, CAPITALS_ON, sizeof(mycall), 8, 0);
+			readline(conf_w, 6, 25, mycall, CAPITALS_ON, sizeof(mycall), 8, 0, 0);
 			if (strlen(mycall) == 0) {
 				strcpy(mycall, "NOCALL");
 			}
@@ -1276,7 +1285,7 @@ while ((j = getch()) != 0) {
 #ifdef OSS
 		case 'e':
 			readline(conf_w, 14, 25, dspdevice, CAPITALS_OFF,
-					sizeof(dspdevice), 27, 1);
+					sizeof(dspdevice), 27, 1, 1);
 			if (strlen(dspdevice) == 0) {
 				strcpy(dspdevice, "/dev/dsp");
 			}
@@ -1331,7 +1340,7 @@ while ((j = getch()) != 0) {
 	if (!callnr) {
 		attemptvalid = 1;
 	}
-	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses || focusconfusions || spacedrepetition || answerbatch != 1 || serialdigits != 0 || portablevariants || sessionseed != 0 || qrq_practice_sustained_goal_active(goalspeed, goalduration)) {
+	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses || focusconfusions || spacedrepetition || answerbatch != 1 || serialdigits != 0 || portablevariants || practiceitems[0] != '\0' || sessionseed != 0 || qrq_practice_sustained_goal_active(goalspeed, goalduration)) {
 		attemptvalid = 0;	
 	}
 
@@ -1417,17 +1426,21 @@ void update_parameter_dialog (void) {
 				focusconfusions ? "yes" : "no");
 		mvwprintw(conf_w, 11, 2, "Spaced review*:           %-3s m",
 				spacedrepetition ? "yes" : "no");
-		mvwprintw(conf_w, 12, 2, "Answer batch*:            %-3d b", answerbatch);
-		if (serialdigits != 0) {
-			mvwaddstr(conf_w, 13, 2,
+		mvwprintw(conf_w, 12, 2, "Custom items*: %-27.27s u",
+				practiceitems[0] ? practiceitems : "(off)");
+		mvwprintw(conf_w, 13, 2, "Answer batch*:            %-3d b", answerbatch);
+		if (practiceitems[0] != '\0') {
+			mvwaddstr(conf_w, 14, 2,
+					"Custom items override database and generators.");
+		} else if (serialdigits != 0) {
+			mvwaddstr(conf_w, 14, 2,
 					"Serial generator overrides callsign database.");
 		} else if (portablevariants) {
-			mvwaddstr(conf_w, 13, 2,
+			mvwaddstr(conf_w, 14, 2,
 					"Portable generator overrides the suffix filter.");
 		} else if (!callnr) {
-			mvwprintw(conf_w, 13, 2, "Callsign database: %-24.24s d", basename(cbfilename));
+			mvwprintw(conf_w, 14, 2, "Callsign database: %-24.24s d", basename(cbfilename));
 		}
-		mvwaddstr(conf_w, 14, 2, "Filters and training modes apply to the next session.");
 		mvwprintw(conf_w, 15, 4, ": Play CW sample");
 		mvwprintw(conf_w, 15, 25, ": Save config");
 		mvwprintw(conf_w, 15, 44, ": Exit");
@@ -1454,8 +1467,8 @@ void update_parameter_dialog (void) {
 					"                 k/l or 0", (constanttone)?ctonefreq : 0);
 	mvwprintw(conf_w,8,2, "CW waveform:           %-8s"
 					"             w", wavename);
-	mvwprintw(conf_w,9,2, "Allow unlimited F6*:   %-3s"
-					"                  f", (f6 ? "yes" : "no"));
+	mvwprintw(conf_w,9,2, "Allow extra F6 resends*: %-3s"
+					"                f", (f6 ? "yes" : "no"));
 	mvwprintw(conf_w,10,2, "Fixed speed*: %-3s s  Stop on error: %-3s t",
 			fixspeed ? "yes" : "no", stoponerror ? "yes" : "no");
 	if (unlimitedattempt) {
@@ -1546,7 +1559,7 @@ static void draw_input_line(WINDOW *win, int y, int x, const char *line,
 
 /* Edit a bounded string, optionally accepting printable path characters. */
 static int readline(WINDOW *win, int y, int x, char *line, int capitals,
-		size_t capacity, int display_width, int path_mode) {
+		size_t capacity, int display_width, int path_mode, int literal_hyphen) {
 	int c;						/* character we read */
 	int i=0;
 	size_t line_len;
@@ -1587,7 +1600,7 @@ static int readline(WINDOW *win, int y, int x, char *line, int capitals,
 
             /* Accept - as / for layouts where / requires Shift, except when
 			 * editing a path where a literal hyphen is meaningful. */
-            if (!path_mode && c == '-') {
+			if (!path_mode && !literal_hyphen && c == '-') {
                 c = '/';
             }
 
@@ -1948,6 +1961,9 @@ static int update_score(void) {
 	}
 	else if (focusconfusions_active) {
 		mvwprintw(top_w, 1, 27, "[focus drills]");
+	}
+	else if (practiceitems[0] != '\0') {
+		mvwprintw(top_w, 1, 27, "[custom: %zu items]", nrofcalls);
 	}
 	else if (answerbatch > 1) {
 		mvwprintw(top_w, 1, 27, "[batch copy: %d]", answerbatch);
@@ -2391,6 +2407,9 @@ static int read_config(void) {
 			(void)config_int_value(line, key, value, 0, 2, &portablemode);
 		} else if (strcmp(key, "portablevariants") == 0) {
 			(void)config_int_value(line, key, value, 0, 1, &portablevariants);
+		} else if (strcmp(key, "customitems") == 0) {
+			(void)config_string_value(line, key, value, practiceitems,
+					sizeof(practiceitems), 1);
 		} else if (strcmp(key, "allowedchars") == 0) {
 			(void)config_graph_string_value(line, key, value, allowedchars,
 					sizeof(allowedchars));
@@ -2871,7 +2890,8 @@ static int save_config (void) {
 		"accuracytarget", "callprefixes", "digitmode", "portablemode",
 		"allowedchars", "sessionseed", "volume", "minpitch", "maxpitch",
 		"qrnlevel", "qsblevel", "qrmlevel", "samplerate", "focusconfusions", "spacedrepetition",
-		"answerbatch", "serialdigits", "goalspeed", "goalduration", "portablevariants"
+		"answerbatch", "serialdigits", "goalspeed", "goalduration", "portablevariants",
+		"customitems"
 	};
 	FILE *fh = NULL;
 	char tmp[PATH_MAX + 80];
@@ -2956,7 +2976,8 @@ static int save_config (void) {
 			case 37: written = snprintf(tmp, sizeof(tmp), "%d", serialdigits); break;
 			case 38: written = snprintf(tmp, sizeof(tmp), "%d", goalspeed); break;
 			case 39: written = snprintf(tmp, sizeof(tmp), "%d", goalduration); break;
-			default: written = snprintf(tmp, sizeof(tmp), "%d", portablevariants); break;
+			case 40: written = snprintf(tmp, sizeof(tmp), "%d", portablevariants); break;
+			default: written = snprintf(tmp, sizeof(tmp), "%s", practiceitems); break;
 		}
 		if (written < 0 || (size_t)written >= sizeof(tmp)) {
 			fprintf(stderr, "Unable to format config option '%s'.\n", confopts[i]);
@@ -3641,7 +3662,14 @@ static size_t read_callbase(void) {
 	};
 
 	free_calls();
-	if (serialdigits != 0) {
+	if (practiceitems[0] != '\0') {
+		if (qrq_callbase_generate_items(practiceitems, &loaded_callbase) != 0) {
+			endwin();
+			fprintf(stderr, "Error: Couldn't generate custom practice items: %s\n",
+					strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+	} else if (serialdigits != 0) {
 		if (qrq_callbase_generate_serials((unsigned int)serialdigits,
 					&loaded_callbase) != 0) {
 			endwin();
@@ -3655,7 +3683,7 @@ static size_t read_callbase(void) {
 				cbfilename, strerror(errno));
 		exit(EXIT_FAILURE);
 	}
-	if (serialdigits == 0 && portablevariants &&
+	if (practiceitems[0] == '\0' && serialdigits == 0 && portablevariants &&
 			qrq_callbase_generate_portable_variants(&loaded_callbase) != 0) {
 		endwin();
 		fprintf(stderr, "Error: Couldn't generate portable calls: %s\n",

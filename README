@@ -18,9 +18,9 @@ data/configuration handling and builds; configurable session, speed, filter,
 review, seeded-practice, and sustained-goal controls; persistent response-time, item-accuracy,
 and character-confusion feedback; confusion-focused and spaced-review drills;
 delayed-answer batch copy; QSB, QRN, and CW QRM simulation; zero-padded
-contest serial-exchange and portable-call practice; refreshed CWops practice data; and the
-`qrq --version` console command. The feature descriptions below document
-these W4GNS enhancements in detail.
+contest serial-exchange, portable-call, and custom-item practice; refreshed
+CWops practice data; and the `qrq --version` console command. The feature
+descriptions below document these W4GNS enhancements in detail.
 
 -----------------------------------------------------------------------------
 
@@ -108,6 +108,14 @@ suffix filter is intentionally overridden while this generator is active;
 forms longer than QRQ's 28-character item limit are skipped. Portable-variant
 sessions are training-only and are not toplist comparable.
 
+Set `customitems` to a comma-separated W4GNS drill list, or edit it with `u`
+on F5's call-filter page. For example, `customitems=CQ,DE,5NN,?` builds a
+focused contest-exchange drill; `customitems=QRZ,UP 5,/P` works for a short
+operating-pattern drill. Items are normalized to uppercase, may contain CW
+letters, digits, spaces, `/`, `-`, `.`, `=`, and `?`, and must be 28
+characters or shorter. A nonempty custom list replaces the selected database
+and other generators, and is training-only and toplist-ineligible.
+
 W4GNS sustained-copy goals use `goalspeed` and `goalduration` together. Set a
 speed target in CpM and a duration in seconds (both nonzero) to copy until the
 duration expires while keeping the adaptive speed at or above the target. On
@@ -133,9 +141,9 @@ qrqrc.
 
 Only an ordinary, completed 50-call session is comparable in the toplist.
 Fixed-speed, unlimited-repeat, non-50-call, adaptive, review, batch-copy,
-serial-copy, sustained-goal, and seeded sessions are still recorded in local
-history but are toplist-ineligible. Portable-variant sessions are also
-toplist-ineligible.
+serial-copy, custom-item, sustained-goal, and seeded sessions are still
+recorded in local history but are toplist-ineligible. Portable-variant sessions
+are also toplist-ineligible.
 Aborted or incomplete sessions are also excluded. If an accuracy goal is set,
 the completed session must meet it.
 
