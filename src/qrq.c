@@ -258,6 +258,7 @@ static void free_calls(void);
 static void apply_confusion_focus(void);
 static int copy_file(const char *source_path, const char *destination_path);
 static int write_file_atomic(const char *path, const void *data, size_t length);
+static unsigned practice_random_seed(void);
 #ifdef OSX_BUNDLE
 static int set_bundle_resource_directory(const char *program_path);
 #endif
@@ -537,7 +538,7 @@ int main (int argc, char *argv[]) {
 	/* Practice selection and simulated receiver noise use independent streams. */
 	qrn_state ^= (uint32_t)time(NULL);
 	qrq_qrm_init(&qrm_state, qrn_state ^ 0xa5d4e3f1U);
-	srand((unsigned)time(NULL));
+	srand(practice_random_seed());
 
 	/****** Reading configuration file ******/
 	printw("\nReading configuration file qrqrc \n");
@@ -3717,6 +3718,31 @@ static size_t read_callbase(void) {
 	}
 	call_maxlen = (int)loaded_callbase.max_length;
 	return loaded_callbase.count;
+}
+
+/* Seed ordinary practice sessions from OS entropy when possible. Reproducible
+ * sessions deliberately replace this seed later through sessionseed. */
+static unsigned practice_random_seed(void) {
+	FILE *entropy;
+	unsigned seed;
+	int entropy_read = 0;
+
+	entropy = fopen("/dev/urandom", "rb");
+	if (entropy != NULL) {
+		entropy_read = fread(&seed, sizeof(seed), 1, entropy) == 1;
+		(void)fclose(entropy);
+		if (entropy_read) {
+			return seed;
+		}
+	}
+	seed = (unsigned)time(NULL) ^ (unsigned)clock() ^
+			(unsigned)(uintptr_t)&seed;
+#ifdef WIN32
+	seed ^= (unsigned)GetCurrentProcessId();
+#else
+	seed ^= (unsigned)getpid();
+#endif
+	return seed == 0 ? 0x9e3779b9U : seed;
 }
 
 static int has_qcb_suffix(const char *name) {

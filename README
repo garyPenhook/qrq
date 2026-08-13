@@ -57,6 +57,11 @@ Configured speeds range from 10 to 5000 CpM (2 to 1000 WpM). Adaptive
 slowdown during a session stops at 20 CpM. The correct-answer and
 wrong-answer steps are independently configurable.
 
+For broad, non-repeating practice from a large callbase, leave
+`sessionseed=0`. W4GNS QRQ seeds the selection stream from operating-system
+entropy when available, then draws uniformly from unused entries; set a
+nonzero `sessionseed` only when you want the same challenge sequence again.
+
 There is a simple toplist function in qrq which makes it possible for the user
 to keep track of his training success or to compare scores with others.
 

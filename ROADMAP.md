@@ -50,6 +50,8 @@ practice.
 - [x] Filters for call length, prefixes, digits, portable suffixes, and
   characters through `qrqrc`; all constraints are applied by the loader.
 - [x] Seeded sessions for repeatable challenges via `sessionseed` in `qrqrc`.
+  Unseeded sessions use operating-system entropy when available before making
+  no-repeat random selections.
 - [x] Add zero-padded three-, four-, and five-digit serial-exchange practice.
   The F5 call-filter page can replace the selected database with the complete
   serial range for a training-only contest-copy session.
