@@ -63,7 +63,7 @@ override CFLAGS += -D PREFIX=\"$(PREFIX)\" -D BUILD_INFO=\"$(BUILD_INFO)\" -D VE
 
 ifeq ($(USE_CA), YES)
 		CC=clang
-		OBJECTS=qrq.o score.o callbase.o practice.o history.o config.o coreaudio.o
+		OBJECTS=qrq.o score.o callbase.o practice.o history.o confusion.o item_history.o audio_effects.o config.o coreaudio.o
 		override CFLAGS += -D CA -std=c99 -pthread
 		ifeq ($(OSX_PLATFORM), YES)
 		override LDFLAGS += -framework AudioUnit -framework CoreServices  -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=10.5 -lcurses
@@ -82,13 +82,13 @@ ifeq ($(USE_CA), YES)
 else ifeq ($(USE_PA), YES)
 		override CFLAGS += -D PA -pthread $(NCURSES_CFLAGS) $(PULSE_CFLAGS)
 		override LDFLAGS += -lpthread $(PULSE_LIBS) $(NCURSES_LIBS)
-		OBJECTS=qrq.o score.o callbase.o practice.o history.o config.o pulseaudio.o
+		OBJECTS=qrq.o score.o callbase.o practice.o history.o confusion.o item_history.o audio_effects.o config.o pulseaudio.o
 else ifeq ($(USE_WIN32), YES)
 		override CFLAGS += -D WIN32 $(WIN32_CURSES_CFLAGS)
 		override LDFLAGS += -lwinmm -lpthread $(WIN32_CURSES_LIBS)
-		OBJECTS=qrq.o score.o callbase.o practice.o history.o config.o qrq-resource.o
+		OBJECTS=qrq.o score.o callbase.o practice.o history.o confusion.o item_history.o audio_effects.o config.o qrq-resource.o
 else
-		OBJECTS=qrq.o score.o callbase.o practice.o history.o config.o oss.o
+		OBJECTS=qrq.o score.o callbase.o practice.o history.o confusion.o item_history.o audio_effects.o config.o oss.o
 		override LDFLAGS += -lpthread $(NCURSES_LIBS)
 		override CFLAGS += -D OSS $(NCURSES_CFLAGS)
 endif
@@ -180,7 +180,7 @@ package: qrq
 	$(SSH) $(IPHONE_HOST) "dpkg -i /tmp/cydiastore_com.kb1ooo.qrq_v$(shell grep ^Version: control | cut -d ' ' -f 2).deb"
 
 clean:
-	rm -f qrq.exe qrq test_score test_callbase test_practice test_history test_config test_callbase.qcb test_history.csv toplist-old *~ *.o
+	rm -f qrq.exe qrq test_score test_callbase test_practice test_history test_confusion test_item_history test_audio_effects test_config test_callbase.qcb test_history.csv test_confusion.csv test_item_history.csv toplist-old *~ *.o
 	rm -rf Summary
 	rm -rf qrq.app
 
@@ -196,14 +196,26 @@ test_practice: tests/test_practice.c practice.c practice.h
 test_history: tests/test_history.c history.c history.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(TEST_CFLAGS) -I. -o $@ tests/test_history.c history.c
 
+test_confusion: tests/test_confusion.c confusion.c confusion.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(TEST_CFLAGS) -I. -o $@ tests/test_confusion.c confusion.c
+
+test_item_history: tests/test_item_history.c item_history.c item_history.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(TEST_CFLAGS) -I. -o $@ tests/test_item_history.c item_history.c
+
+test_audio_effects: tests/test_audio_effects.c audio_effects.c audio_effects.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(TEST_CFLAGS) -I. -o $@ tests/test_audio_effects.c audio_effects.c -lm
+
 test_config: tests/test_config.c config.c config.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(TEST_CFLAGS) -I. -o $@ tests/test_config.c config.c
 
-check: test_score test_callbase test_practice test_history test_config
+check: test_score test_callbase test_practice test_history test_confusion test_item_history test_audio_effects test_config
 	./test_score
 	./test_callbase
 	./test_practice
 	./test_history
+	./test_confusion
+	./test_item_history
+	./test_audio_effects
 	./test_config
 
 test: check
@@ -217,7 +229,7 @@ dist:
 	rm -f ../releases/qrq-$(VERSION).tar.gz
 	rm -rf ../releases/qrq-$(VERSION)
 	mkdir qrq-$(VERSION)
-	cp qrq.png qrqscore qrq.c score.c score.h callbase.c callbase.h practice.c practice.h history.c history.h config.c config.h qrqrc callbase.qcb toplist \
+	cp qrq.png qrqscore qrq.c score.c score.h callbase.c callbase.h practice.c practice.h history.c history.h confusion.c confusion.h item_history.c item_history.h audio_effects.c audio_effects.h config.c config.h qrqrc callbase.qcb toplist \
 		../AUTHORS ../ChangeLog README ../COPYING qrq.1 Makefile qrqinstaller.nsi \
 		english.qcb cwops.qcb qrq.ico qrq.rc \
 		qrq-$(VERSION)

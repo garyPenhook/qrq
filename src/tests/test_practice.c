@@ -18,6 +18,18 @@ int main(void) {
 	assert(qrq_practice_choose(3, used, mistakes, 1, 2) == 1);
 	assert(qrq_practice_choose(3, used, mistakes, 1, 3) == 1);
 	assert(qrq_practice_choose(3, used, mistakes, 1, 4) == 2);
+	assert(qrq_practice_answer_batch_size(0, 1) == 0);
+	assert(qrq_practice_answer_batch_size(1, 5) == 1);
+	assert(qrq_practice_answer_batch_size(3, 2) == 2);
+	assert(qrq_practice_answer_batch_size(8, 0) == 1);
+	assert(qrq_practice_answer_batch_size(8, 99) == QRQ_PRACTICE_MAX_ANSWER_BATCH);
+	{
+		unsigned char due[] = {0, 2, 0};
+		assert(qrq_practice_choose_scheduled(3, used, mistakes, 0, due, 1, 0) == 0);
+		assert(qrq_practice_choose_scheduled(3, used, mistakes, 0, due, 1, 1) == 1);
+		assert(qrq_practice_choose_scheduled(3, used, mistakes, 0, due, 1, 8) == 1);
+		assert(qrq_practice_choose_scheduled(3, used, mistakes, 0, due, 1, 10) == 2);
+	}
 	used[1] = 1;
 	assert(qrq_practice_choose(3, used, mistakes, 1, 1) == 2);
 	assert(qrq_practice_record_result(3, used, mistakes, 1, 0, 1) == 0);

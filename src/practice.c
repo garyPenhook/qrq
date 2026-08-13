@@ -3,8 +3,22 @@
 #include <limits.h>
 #include <stdlib.h>
 
-size_t qrq_practice_choose(size_t count, const unsigned char *used,
-		const unsigned char *mistakes, int adaptive, uint32_t random_value) {
+static size_t selection_weight(const unsigned char *mistakes, int adaptive,
+		const unsigned char *due, int spaced_repetition, size_t index) {
+	size_t weight = 1;
+
+	if (adaptive && mistakes != NULL) {
+		weight += mistakes[index] > 15 ? 15 : mistakes[index];
+	}
+	if (spaced_repetition && due != NULL) {
+		weight += (due[index] > 3 ? 3 : due[index]) * 4;
+	}
+	return weight;
+}
+
+size_t qrq_practice_choose_scheduled(size_t count, const unsigned char *used,
+		const unsigned char *mistakes, int adaptive, const unsigned char *due,
+		int spaced_repetition, uint32_t random_value) {
 	size_t i;
 	size_t total_weight = 0;
 	size_t selected_weight;
@@ -17,10 +31,7 @@ size_t qrq_practice_choose(size_t count, const unsigned char *used,
 		if (used[i] != 0) {
 			continue;
 		}
-		weight = 1;
-		if (adaptive && mistakes != NULL) {
-			weight += mistakes[i] > 15 ? 15 : mistakes[i];
-		}
+		weight = selection_weight(mistakes, adaptive, due, spaced_repetition, i);
 		if (total_weight > SIZE_MAX - weight) {
 			return QRQ_PRACTICE_NO_ITEM;
 		}
@@ -35,16 +46,28 @@ size_t qrq_practice_choose(size_t count, const unsigned char *used,
 		if (used[i] != 0) {
 			continue;
 		}
-		weight = 1;
-		if (adaptive && mistakes != NULL) {
-			weight += mistakes[i] > 15 ? 15 : mistakes[i];
-		}
+		weight = selection_weight(mistakes, adaptive, due, spaced_repetition, i);
 		if (selected_weight < weight) {
 			return i;
 		}
 		selected_weight -= weight;
 	}
 	return QRQ_PRACTICE_NO_ITEM;
+}
+
+size_t qrq_practice_choose(size_t count, const unsigned char *used,
+		const unsigned char *mistakes, int adaptive, uint32_t random_value) {
+	return qrq_practice_choose_scheduled(count, used, mistakes, adaptive, NULL,
+			0, random_value);
+}
+
+size_t qrq_practice_answer_batch_size(size_t remaining, int configured_batch) {
+	size_t batch = configured_batch < 1 ? 1U : (size_t)configured_batch;
+
+	if (batch > QRQ_PRACTICE_MAX_ANSWER_BATCH) {
+		batch = QRQ_PRACTICE_MAX_ANSWER_BATCH;
+	}
+	return batch < remaining ? batch : remaining;
 }
 
 int qrq_practice_record_result(size_t count, unsigned char *used,

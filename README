@@ -16,6 +16,8 @@ COMPILE / INSTALL
 
 See separate file "INSTALL"
 
+Run `qrq --version` to print the installed version in the console.
+
 -----------------------------------------------------------------------------
 How to use it
 
@@ -55,19 +57,57 @@ in ~/.qrq/), containing all sent and received callsigns, speeds and points.
 
 The toplist file also includes a timestamp of the attempt, which makes it
 possible to keep track of your training progress. Pressing F7 shows the
-in-program score history. On supported systems, QRQ falls back to a GNUplot
-graph when no local history can be displayed. You may also import the file
-into your favorite spreadsheet program to generate stats.
+in-program score history and the most frequent character-level copy
+differences (for example, a sent `B` entered as `X`). QRQ stores these local
+differences, each item's correctness, and answer time in separate versioned
+CSV files. Repeated-call playback is excluded from recorded answer time. The
+F7 screen also highlights the most frequently missed item. On supported
+systems, QRQ falls back to a GNUplot graph when no local history can be
+displayed. You may also import the files into your favorite spreadsheet
+program to generate stats.
+
+Set `focusconfusions=1` (or enable it with `h` on F5's call-filter page) to
+create a training-only session from items containing symbols in your most
+common recorded copy differences. When no relevant history exists, QRQ uses
+the normal filtered callbase instead.
+
+Set `spacedrepetition=1` (or use `m` on F5's call-filter page) for
+training-only persistent review. A missed item is due in the next session;
+after a correct copy, it is next due after 1, 3, 7, 15, and then 31 subsequent
+attempts. Due items receive a selection boost while ordinary material remains
+in the mix.
+
+Set `answerbatch` to 2 through 5 (or use `b` on F5's call-filter page) to
+send that many calls before QRQ accepts any entries. This is a retention and
+short-term-copy drill for contest and pileup work; F6/F7 repeats are disabled
+while it is active. Answer timing starts when each entry prompt appears, and
+batch sessions are not toplist comparable.
+
+Set `serialdigits` to 3, 4, or 5 (or use `s` on F5's call-filter page) to
+replace the selected callsign database with every zero-padded serial exchange
+of that width: for example, `000` through `999`. This is a training-only
+contest-copy drill, so serial sessions are not toplist comparable. The `s`
+key cycles off, 3, 4, and 5 digits.
+
+Set `qsblevel` from 0 to 100 (or use `q/Q` on F5's audio page) to apply slow
+QSB-style fades to the signal. It is independent of QRN, so it can be used to
+practice weak-signal copy with or without background noise.
+
+Set `qrmlevel` from 0 to 100 (or use `r/R` on F5's audio page) to add
+narrow-band CW interference. QRM arrives in short dot/dash-like bursts at
+nearby audio frequencies and is independent of QRN and QSB.
 
 Options can be changed in the config file qrqrc or via the three-page F5 menu.
-This includes volume, QRN level, fixed or random pitch, call length and
-content filters, missed-call review, adaptive selection, accuracy goals, and
-reproducible session seeds. The audio sample rate is intentionally read-only
-in F5 because audio is initialized before the menu opens; set it in qrqrc.
+This includes volume, QRN, QRM, QSB-style fading, fixed or random pitch, call
+length and content filters, missed-call review, adaptive selection, accuracy
+goals, and reproducible session seeds. The audio sample rate is intentionally
+read-only in F5 because audio is initialized before the menu opens; set it in
+qrqrc.
 
 Only an ordinary, completed 50-call session is comparable in the toplist.
-Fixed-speed, unlimited-repeat, non-50-call, adaptive, review, and seeded
-sessions are still recorded in local history but are toplist-ineligible.
+Fixed-speed, unlimited-repeat, non-50-call, adaptive, review, batch-copy,
+serial-copy, and seeded sessions are still recorded in local history but are
+toplist-ineligible.
 Aborted or incomplete sessions are also excluded. If an accuracy goal is set,
 the completed session must meet it.
 

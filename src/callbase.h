@@ -4,6 +4,8 @@
 #include <stddef.h>
 
 #define QRQ_CALLBASE_MAX_LENGTH 28
+#define QRQ_SERIAL_DIGITS_MIN 3
+#define QRQ_SERIAL_DIGITS_MAX 5
 
 struct qrq_callbase {
 	char **items;
@@ -22,6 +24,17 @@ struct qrq_callbase_filter {
 
 int qrq_callbase_load(const char *path, const struct qrq_callbase_filter *filter,
 		struct qrq_callbase *callbase);
+
+/* Create zero-padded sequential serial exchanges (000..999 through
+ * 00000..99999). The generated items replace a callbase for serial-copy
+ * practice and are independent of the selected callsign database. */
+int qrq_callbase_generate_serials(unsigned int digits,
+		struct qrq_callbase *callbase);
+
+/* Retain items containing at least one character in symbols. Returns one
+ * without changing the callbase when no item would remain. */
+int qrq_callbase_retain_symbols(struct qrq_callbase *callbase,
+		const char *symbols);
 void qrq_callbase_free(struct qrq_callbase *callbase);
 
 #endif

@@ -25,6 +25,21 @@ adaptiveselection=0
 # repeat incorrectly copied calls later in the current session
 # values: 0 = no, 1 = yes (review sessions are not toplist comparable)
 reviewmisses=0
+# restrict a training session to calls or words containing symbols from your
+# most common recorded copy differences; 0 = no, 1 = yes (not toplist comparable)
+# QRQ uses the normal filtered callbase until character-confusion data exists.
+focusconfusions=0
+# schedule persistent review from the item-history file. A wrong item is due
+# next session; successful items return after 1, 3, 7, 15, then 31 later items.
+# values: 0 = no, 1 = yes (spaced-review sessions are not toplist comparable)
+spacedrepetition=0
+# send a short batch before accepting any entries (1 = normal, 2..5 = copy
+# retention drill). Repeats are unavailable while batching is enabled.
+# Batch-copy sessions are not toplist comparable.
+answerbatch=1
+# generate zero-padded contest serial exchanges instead of loading a callbase
+# values: 0 = off, 3..5 = number of serial digits (training-only)
+serialdigits=0
 # minimum whole-session accuracy for a local toplist entry; 0 disables it
 # values: 0 or 50..100
 accuracytarget=0
@@ -69,6 +84,12 @@ maxpitch=900
 
 # QRN-like background noise as a percentage (0..100)
 qrnlevel=0
+
+# co-channel CW interference as a percentage (0 = no QRM)
+qrmlevel=0
+
+# QSB-like slow signal fading depth as a percentage (0 = steady signal)
+qsblevel=0
 
 # allow unlimited usage of F6
 # values: 0 = no, 1 = yes
