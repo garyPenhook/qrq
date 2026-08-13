@@ -19,8 +19,9 @@ review, seeded-practice, and sustained-goal controls; persistent response-time, 
 and character-confusion feedback; confusion-focused and spaced-review drills;
 delayed-answer batch copy; QSB, QRN, and CW QRM simulation; zero-padded
 contest serial-exchange, portable-call, and custom-item practice; refreshed
-CWops practice data; and the `qrq --version` console command. The feature
-descriptions below document these W4GNS enhancements in detail.
+CWops practice data; W4GNS integration of the Super Check Partial contest
+callbase; and the `qrq --version` console command. The feature descriptions
+below document these W4GNS enhancements in detail.
 
 -----------------------------------------------------------------------------
 
@@ -147,9 +148,13 @@ are also toplist-ineligible.
 Aborted or incomplete sessions are also excluded. If an accuracy goal is set,
 the completed session must meet it.
 
-The standard distribution contains three databases: callbase.qcb (many
-callsigns, taken from real logs), english.qcb (English words), and cwops.qcb
-(CWops members with name and number, training for the CWT mini contest).
+The standard distribution contains four databases: callbase.qcb (many
+callsigns, taken from real logs), english.qcb (English words), cwops.qcb
+(CWops members with name and number, training for the CWT mini contest), and
+W4GNS-integrated `morserunner.qcb` (50,029 worldwide contest callsigns). The
+last is a content-preserving Super Check Partial snapshot, released 2026.08.07
+and retrieved 2026-08-10; select it with F5's database chooser. Its preserved
+header and [source attribution](src/MORSE_RUNNER_CALLS.md) travel with QRQ.
 Additional user contributed QCB files can be found at:
 https://git.fkurz.net/dj1yfk/qrq/src/branch/master/extras
 

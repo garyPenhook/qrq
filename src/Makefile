@@ -121,6 +121,7 @@ install: qrq
 	${INSTALL}    -m 0644 callbase.qcb			qrq.app/Contents/Resources/share/qrq/
 	${INSTALL}    -m 0644 english.qcb			qrq.app/Contents/Resources/share/qrq/
 	${INSTALL}    -m 0644 cwops.qcb				qrq.app/Contents/Resources/share/qrq/
+	${INSTALL}    -m 0644 morserunner.qcb			qrq.app/Contents/Resources/share/qrq/
 	${INSTALL}    -m 0644 qrqrc					qrq.app/Contents/Resources/share/qrq/
 	${INSTALL}    -m 0644 toplist				qrq.app/Contents/Resources/share/qrq/
 	${INSTALL}    -m 0644 OSXExtras/qrq.icns	qrq.app/Contents/Resources/
@@ -142,6 +143,7 @@ install: qrq
 	${INSTALL}    -m 0644 callbase.qcb    $(DESTDIR)$(PREFIX)/share/qrq/
 	${INSTALL}    -m 0644 english.qcb     $(DESTDIR)$(PREFIX)/share/qrq/
 	${INSTALL}    -m 0644 cwops.qcb       $(DESTDIR)$(PREFIX)/share/qrq/
+	${INSTALL}    -m 0644 morserunner.qcb $(DESTDIR)$(PREFIX)/share/qrq/
 	${INSTALL}    -m 0644 qrqrc           $(DESTDIR)$(PREFIX)/share/qrq/
 	${INSTALL}    -m 0644 toplist         $(DESTDIR)$(PREFIX)/share/qrq/
 
@@ -153,6 +155,7 @@ uninstall:
 	rm -f $(PREFIX)/share/qrq/callbase.qcb
 	rm -f $(PREFIX)/share/qrq/english.qcb
 	rm -f $(PREFIX)/share/qrq/cwops.qcb
+	rm -f $(PREFIX)/share/qrq/morserunner.qcb
 	rm -f $(PREFIX)/share/qrq/qrqrc
 	rm -f $(PREFIX)/share/qrq/toplist
 	rmdir $(PREFIX)/share/qrq/
@@ -172,6 +175,7 @@ package: qrq
 	${INSTALL}    -m 0644 callbase.qcb    qrq-pkg$(PREFIX)/share/qrq/
 	${INSTALL}    -m 0644 english.qcb     qrq-pkg$(PREFIX)/share/qrq/
 	${INSTALL}    -m 0644 cwops.qcb       qrq-pkg$(PREFIX)/share/qrq/
+	${INSTALL}    -m 0644 morserunner.qcb qrq-pkg$(PREFIX)/share/qrq/
 	${INSTALL}    -m 0644 qrqrc           qrq-pkg$(PREFIX)/share/qrq/
 	${INSTALL}    -m 0644 toplist         qrq-pkg$(PREFIX)/share/qrq/
 	${INSTALL}    -m 0644 control         qrq-pkg/DEBIAN/
@@ -231,7 +235,7 @@ dist:
 	mkdir qrq-$(VERSION)
 	cp qrq.png qrqscore qrq.c score.c score.h callbase.c callbase.h practice.c practice.h history.c history.h confusion.c confusion.h item_history.c item_history.h audio_effects.c audio_effects.h config.c config.h qrqrc callbase.qcb toplist \
 		../AUTHORS ../ChangeLog README ../COPYING qrq.1 Makefile qrqinstaller.nsi \
-		english.qcb cwops.qcb qrq.ico qrq.rc \
+		english.qcb cwops.qcb morserunner.qcb MORSE_RUNNER_CALLS.md qrq.ico qrq.rc \
 		qrq-$(VERSION)
 	cp coreaudio.c coreaudio.h oss.c oss.h \
 		qrq-$(VERSION)

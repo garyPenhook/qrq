@@ -28,6 +28,11 @@ int main(void) {
 	assert(qrq_callbase_retain_symbols(&callbase, "Z") == 1);
 	assert(callbase.count == 2);
 	qrq_callbase_free(&callbase);
+	assert(qrq_callbase_load("morserunner.qcb", &filter, &callbase) == 0);
+	assert(callbase.count == 50029 && callbase.max_length == 8);
+	assert(strcmp(callbase.items[0], "2D0OMN") == 0);
+	assert(strcmp(callbase.items[50028], "ZZ7ZZ") == 0);
+	qrq_callbase_free(&callbase);
 	errno = 0;
 	assert(qrq_callbase_generate_portable_variants(NULL) == -1 && errno == EINVAL);
 	assert(qrq_callbase_load(path, &filter, &callbase) == 0);

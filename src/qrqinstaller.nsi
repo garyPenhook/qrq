@@ -30,6 +30,7 @@ Section
 	File "callbase.qcb"
 	File /oname=ChangeLog.txt "ChangeLog"
 	File "english.qcb"
+	File "morserunner.qcb"
 	File /oname=README.txt "README"
   	SetOverwrite off
 	File "qrqrc"
