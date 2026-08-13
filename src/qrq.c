@@ -203,6 +203,7 @@ static size_t nrofcalls=0;
 static int toplist_own=0;               /* show only own call on toplist */
 static int call_maxlen = 0;				/* maximum length of a callsign/word from current database */
 static int parameter_page = 0;
+static int parameter_selection = 0;
 #ifndef WIN32
 static volatile sig_atomic_t resize_pending = 0;
 #endif
@@ -256,6 +257,13 @@ static void callbase_dialog(void);
 static void parameter_dialog(void);
 static int clear_parameter_display(void);
 static void update_parameter_dialog(void);
+static int parameter_item_count(int page);
+static int parameter_selected_row(void);
+static void move_parameter_selection(int direction);
+static void move_parameter_page(int direction);
+static void adjust_selected_parameter(int direction);
+static void activate_selected_parameter(void);
+static void mark_selected_parameter(void);
 static void start_summary_file(void);
 static void close_summary_file(void);
 static int append_summary(const char *format, ...);
@@ -1041,6 +1049,239 @@ while (status == 1) {
 
 /* (formerly status == 2). Change parameters */
 
+static int parameter_item_count(int page) {
+	if (page == 0) {
+		return callnr ? 12 : 13;
+	}
+	if (page == 1) {
+#ifdef OSS
+		return 8;
+#else
+		return 7;
+#endif
+	}
+	return 12;
+}
+
+static int parameter_selected_row(void) {
+	if (parameter_page == 0) {
+		return parameter_selection < 10 ? parameter_selection + 2 :
+				parameter_selection + (callnr ? 3 : 2);
+	}
+	if (parameter_page == 1) {
+#ifdef OSS
+		if (parameter_selection == 7) {
+			return 11;
+		}
+#endif
+		return parameter_selection + 2;
+	}
+	return parameter_selection + 2;
+}
+
+static void move_parameter_selection(int direction) {
+	if (direction > 0) {
+		parameter_selection++;
+		if (parameter_selection == parameter_item_count(parameter_page)) {
+			parameter_page = (parameter_page + 1) % 3;
+			parameter_selection = 0;
+		}
+	} else {
+		parameter_selection--;
+		if (parameter_selection < 0) {
+			parameter_page = (parameter_page + 2) % 3;
+			parameter_selection = parameter_item_count(parameter_page) - 1;
+		}
+	}
+}
+
+static void move_parameter_page(int direction) {
+	parameter_page = (parameter_page + (direction > 0 ? 1 : 2)) % 3;
+	parameter_selection = 0;
+}
+
+static void adjust_selected_parameter(int direction) {
+	if (parameter_page == 0) {
+		int item = parameter_selection;
+
+		if (callnr && item >= 10) {
+			item++;
+		}
+		switch (item) {
+			case 0:
+				if (direction > 0 && initialspeed <= QRQ_SPEED_MAX - 10) initialspeed += 10;
+				if (direction < 0 && initialspeed > 10) initialspeed -= 10;
+				break;
+			case 1:
+				if (direction > 0 && mincharspeed <= QRQ_SPEED_MAX - 10) mincharspeed += 10;
+				if (direction < 0 && mincharspeed >= 10) mincharspeed -= 10;
+				break;
+			case 2:
+				if (direction > 0 && speedupstep <= QRQ_SPEED_MAX - 2) speedupstep += 2;
+				if (direction < 0 && speedupstep >= 4) speedupstep -= 2;
+				break;
+			case 3:
+				if (direction > 0 && edge <= 9.0) edge += 0.1;
+				if (direction < 0 && edge > 0.1) edge -= 0.1;
+				break;
+			case 5:
+				if (direction > 0) {
+					if (constanttone == 0) constanttone = 1;
+					else if (ctonefreq < 1600) ctonefreq += 10;
+				} else if (ctonefreq >= 160) {
+					ctonefreq -= 10;
+				} else {
+					constanttone = 0;
+				}
+				break;
+			case 6:
+				if (direction > 0) waveform = waveform == SQUARE ? SINE : waveform + 1;
+				else waveform = waveform == SINE ? SQUARE : waveform - 1;
+				break;
+			case 7: f6 = !f6; break;
+			case 8: fixspeed = !fixspeed; break;
+			case 9:
+				if (direction > 0 && sessionlength <= INT_MAX - 5) sessionlength += 5;
+				if (direction < 0 && sessionlength > 5) sessionlength -= 5;
+				unlimitedattempt = 0;
+				break;
+			case 11:
+				adaptiveselection = !adaptiveselection;
+				break;
+			case 12:
+				if (direction > 0) {
+					goalspeed = goalspeed == 0 ? initialspeed :
+							(goalspeed <= QRQ_SPEED_MAX - 25 ? goalspeed + 25 : 0);
+				} else if (goalspeed <= 25) {
+					goalspeed = 0;
+				} else {
+					goalspeed -= 25;
+				}
+				break;
+		}
+		return;
+	}
+
+	if (parameter_page == 1) {
+		switch (parameter_selection) {
+			case 0: volume = direction > 0 ? (volume <= 95 ? volume + 5 : 100) :
+					(volume >= 5 ? volume - 5 : 0); break;
+			case 1: qrnlevel = direction > 0 ? (qrnlevel <= 95 ? qrnlevel + 5 : 100) :
+					(qrnlevel >= 5 ? qrnlevel - 5 : 0); break;
+			case 2: qrmlevel = direction > 0 ? (qrmlevel <= 95 ? qrmlevel + 5 : 100) :
+					(qrmlevel >= 5 ? qrmlevel - 5 : 0); break;
+			case 3: pileuplevel = direction > 0 ? (pileuplevel <= 95 ? pileuplevel + 5 : 100) :
+					(pileuplevel >= 5 ? pileuplevel - 5 : 0); break;
+			case 4: qsblevel = direction > 0 ? (qsblevel <= 95 ? qsblevel + 5 : 100) :
+					(qsblevel >= 5 ? qsblevel - 5 : 0); break;
+			case 5:
+				if (direction > 0 && minpitch < maxpitch) minpitch += 10;
+				if (direction < 0 && minpitch > 100) minpitch -= 10;
+				break;
+			case 6:
+				if (direction > 0 && maxpitch < 4000) maxpitch += 10;
+				if (direction < 0 && maxpitch > minpitch) maxpitch -= 10;
+				break;
+		}
+		return;
+	}
+
+	switch (parameter_selection) {
+		case 0:
+			if (direction > 0 && mincalllength < maxcalllength) mincalllength++;
+			if (direction < 0 && mincalllength > 1) mincalllength--;
+			break;
+		case 1:
+			if (direction > 0 && maxcalllength < CALL_MAX) maxcalllength++;
+			if (direction < 0 && maxcalllength > mincalllength) maxcalllength--;
+			break;
+		case 2: digitmode = (digitmode + direction + 3) % 3; break;
+		case 3: portablemode = (portablemode + direction + 3) % 3; break;
+		case 6:
+			if (direction > 0) serialdigits = serialdigits == QRQ_SERIAL_DIGITS_MAX ? 0 : serialdigits + 1;
+			else serialdigits = serialdigits == 0 ? QRQ_SERIAL_DIGITS_MAX : serialdigits - 1;
+			break;
+		case 8: focusconfusions = !focusconfusions; break;
+		case 9: spacedrepetition = !spacedrepetition; break;
+		case 11:
+			if (direction > 0) answerbatch = answerbatch == QRQ_PRACTICE_MAX_ANSWER_BATCH ? 1 : answerbatch + 1;
+			else answerbatch = answerbatch == 1 ? QRQ_PRACTICE_MAX_ANSWER_BATCH : answerbatch - 1;
+			break;
+	}
+}
+
+static void activate_selected_parameter(void) {
+	if (parameter_page == 0) {
+		int item = parameter_selection;
+
+		if (callnr && item >= 10) {
+			item++;
+		}
+		if (item == 4) {
+			readline(conf_w, 6, 25, mycall, CAPITALS_ON, sizeof(mycall), 8, 0, 0);
+			if (mycall[0] == '\0') strcpy(mycall, "NOCALL");
+			else if (strlen(mycall) > 7) mycall[7] = '\0';
+			p = 0;
+		} else if (item == 10 && !callnr) {
+			curs_set(1);
+			callbase_dialog();
+		} else {
+			adjust_selected_parameter(1);
+		}
+		return;
+	}
+
+	if (parameter_page == 1) {
+#ifdef OSS
+		if (parameter_selection == 7) {
+			p = 0;
+			readline(conf_w, 11, 25, dspdevice, CAPITALS_OFF,
+					sizeof(dspdevice), 27, 1, 1);
+			if (dspdevice[0] == '\0') strcpy(dspdevice, "/dev/dsp");
+			p = 0;
+		}
+#endif
+		return;
+	}
+
+	if (parameter_selection == 4) {
+		p = 0;
+		readline(conf_w, 6, 25, callprefixes, CAPITALS_ON,
+				sizeof(callprefixes), 25, 0, 0);
+		p = 0;
+	} else if (parameter_selection == 5) {
+		p = 0;
+		readline(conf_w, 7, 25, allowedchars, CAPITALS_ON,
+				sizeof(allowedchars), 25, 0, 0);
+		p = 0;
+	} else if (parameter_selection == 7 && !callnr) {
+		char seed_text[16];
+		unsigned int parsed_seed;
+
+		(void)snprintf(seed_text, sizeof(seed_text), "%u", sessionseed);
+		p = 0;
+		readline(conf_w, 8, 25, seed_text, CAPITALS_OFF,
+				sizeof(seed_text), 15, 0, 0);
+		if (qrq_config_parse_uint(seed_text, &parsed_seed) == 0) sessionseed = parsed_seed;
+		p = 0;
+	} else if (parameter_selection == 10) {
+		p = 0;
+		readline(conf_w, 12, 17, practiceitems, CAPITALS_ON,
+				sizeof(practiceitems), 27, 0, 1);
+		p = 0;
+	} else {
+		adjust_selected_parameter(1);
+	}
+}
+
+static void mark_selected_parameter(void) {
+	int row = parameter_selected_row();
+
+	wattron(conf_w, A_BOLD);
+	mvwaddch(conf_w, row, 1, '>');
+	wattroff(conf_w, A_BOLD);
+}
+
 void parameter_dialog (void) {
 
 int j = 0;
@@ -1051,12 +1292,37 @@ int j = 0;
 	 * displaying or changing those values, and after each F6 sample. */
 	wait_morse_thread();
 	parameter_page = 0;
+	parameter_selection = 0;
 update_parameter_dialog();
 
 while ((j = getch()) != 0) {
 	handled = 0;
 	if (j == '\t') {
-		parameter_page = (parameter_page + 1) % 3;
+		move_parameter_page(1);
+		handled = 1;
+	} else if (j == KEY_BTAB) {
+		move_parameter_page(-1);
+		handled = 1;
+	} else if (j == KEY_UP) {
+		move_parameter_selection(-1);
+		handled = 1;
+	} else if (j == KEY_DOWN) {
+		move_parameter_selection(1);
+		handled = 1;
+	} else if (j == KEY_LEFT) {
+		adjust_selected_parameter(-1);
+		handled = 1;
+	} else if (j == KEY_RIGHT) {
+		adjust_selected_parameter(1);
+		handled = 1;
+	} else if (j == KEY_PPAGE) {
+		move_parameter_page(-1);
+		handled = 1;
+	} else if (j == KEY_NPAGE) {
+		move_parameter_page(1);
+		handled = 1;
+	} else if (j == '\n' || j == '\r' || j == KEY_ENTER) {
+		activate_selected_parameter();
 		handled = 1;
 	} else if (parameter_page == 1) {
 			switch (j) {
@@ -1456,7 +1722,8 @@ void update_parameter_dialog (void) {
 		mvwprintw(conf_w, 15, 4, ": Play CW sample");
 		mvwprintw(conf_w, 15, 25, ": Save config");
 		mvwprintw(conf_w, 15, 44, ": Exit");
-		mvwaddstr(inf_w, 1, 1, "Tab: next settings page   lowercase/uppercase: -/+");
+		mvwaddstr(inf_w, 1, 1, "Up/Down select  Left/Right change  Tab/PgDn next page");
+		mark_selected_parameter();
 		wrefresh(conf_w);
 		wrefresh(inf_w);
 		return;
@@ -1511,7 +1778,8 @@ void update_parameter_dialog (void) {
 		mvwprintw(conf_w, 15, 4, ": Play CW sample");
 		mvwprintw(conf_w, 15, 25, ": Save config");
 		mvwprintw(conf_w, 15, 44, ": Exit");
-		mvwaddstr(inf_w, 1, 1, "Tab: next settings page   * Toplist-ineligible");
+		mvwaddstr(inf_w, 1, 1, "Up/Down select  Left/Right change  Tab/PgDn next page");
+		mark_selected_parameter();
 		wrefresh(conf_w);
 		wrefresh(inf_w);
 		return;
@@ -1521,21 +1789,21 @@ void update_parameter_dialog (void) {
 	mvwprintw(conf_w,15,2, "F6                   F2                F10");
 	wattroff(conf_w, A_BOLD);
 	mvwprintw(conf_w,2,2, "Initial Speed:         %3d CpM / %3d WpM" 
-					"    up/down", initialspeed, initialspeed/5);
+					"    left/right", initialspeed, initialspeed/5);
 	mvwprintw(conf_w,3,2, "Character speed floor: %3d CpM / %3d WpM"
 					" left/right", mincharspeed, mincharspeed/5);
 	mvwprintw(conf_w,4,2, "Speed stepping:        +%3d/-%-3d CpM   "
-					" PgUp/PgDn ,/.", speedupstep, speeddownstep);
+					" left/right ,/.", speedupstep, speeddownstep);
 	mvwprintw(conf_w,5,2, "CW rise/falltime (ms): %1.1f           " 
-					"       +/-", edge);
+					" left/right +/-", edge);
 	mvwprintw(conf_w,6,2, "Callsign:              %-14s" 
-					"       c", mycall);
+					"   Enter/c", mycall);
 	mvwprintw(conf_w,7,2, "CW pitch (0 = random): %-4d"
-					"                 k/l or 0", (constanttone)?ctonefreq : 0);
+					"       left/right", (constanttone)?ctonefreq : 0);
 	mvwprintw(conf_w,8,2, "CW waveform:           %-8s"
-					"             w", wavename);
+					"     left/right", wavename);
 	mvwprintw(conf_w,9,2, "Allow extra F6 resends*: %-3s"
-					"                f", (f6 ? "yes" : "no"));
+					"         left/right", (f6 ? "yes" : "no"));
 	mvwprintw(conf_w,10,2, "Fixed speed*: %-3s s  Stop on error: %-3s t",
 			fixspeed ? "yes" : "no", stoponerror ? "yes" : "no");
 	if (unlimitedattempt) {
@@ -1544,7 +1812,7 @@ void update_parameter_dialog (void) {
 	else {
 		(void)snprintf(session_value, sizeof(session_value), "%d", sessionlength);
 	}
-	mvwprintw(conf_w,11,2, "Session calls*:        %-10s [ / ] or u", session_value);
+	mvwprintw(conf_w,11,2, "Session calls*:        %-10s left/right", session_value);
 	if (!callnr) {
 		mvwprintw(conf_w,12,2, "Callsign database:     %-15s"
 					"      d (%zu)", basename(cbfilename),nrofcalls);
@@ -1557,8 +1825,8 @@ void update_parameter_dialog (void) {
 	mvwprintw(conf_w,15,4, ": Play CW sample");
 	mvwprintw(conf_w,15,25, ": Save config");
 	mvwprintw(conf_w,15,44, ": Exit");
-	mvwprintw(inf_w,1,1, "Tab: next page  * Ineligible  Speed maximum: %d",
-			QRQ_SPEED_MAX);
+	mvwprintw(inf_w,1,1, "Up/Down select  Left/Right change  Tab/PgDn next page");
+	mark_selected_parameter();
 	wrefresh(conf_w);
 	wrefresh(inf_w);
 	

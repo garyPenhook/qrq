@@ -81,8 +81,10 @@ both the overall and effective character speeds.
 
 A callsign can be heard again once by pressing F6, and F10 quits the attempt.
 The INS key toggles between insert and overwrite mode in the callsign field.
-F5 opens three settings pages; press Tab to move between general, audio, and
-call-filter settings. During an attempt, F7 replays the previous callsign.
+F5 opens the settings selector: use Up/Down to select a setting and
+Left/Right to change it. Tab or Page Down moves between the general, audio,
+and call-filter pages; Shift-Tab or Page Up moves back. Enter edits a selected
+text setting. During an attempt, F7 replays the previous callsign.
 Outside an attempt, F7 shows local score, speed, and accuracy history.
 
 Configured speeds range from 10 to 5000 CpM (2 to 1000 WpM). Adaptive
