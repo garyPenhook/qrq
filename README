@@ -28,6 +28,33 @@ CWops practice data; W4GNS integration of the Super Check Partial contest
 callbase; and the `qrq --version` console command. The feature descriptions
 below document these W4GNS enhancements in detail.
 
+## W4GNS quick practice guide
+
+### Pileup simulation
+
+Press F5, then Tab to **Configuration 2/3: Audio**. Use `P` to raise
+`pileuplevel` in 5% steps (start around 15–25%); use `p` to reduce it. QRQ
+sends a second, nearby-pitch caller after a short delay, but you copy and enter
+only the target call. The usual one F6 resend replays the same target and
+secondary caller. Pileup sessions are training-only and toplist-ineligible.
+
+![F5 audio page with W4GNS pileup caller at 20 percent](docs/images/pileup-and-confusion-settings.png)
+
+### Current confusion focus
+
+Press F5, then Tab twice to **Configuration 3/3: Call filters**. Press `C`
+to cycle all history, 7 days, 30 days, 90 days, and 365 days. The selected
+window gives newer mistakes more influence in F7 statistics and in the
+optional `focusconfusions=1` drill. Press `R`, then `y`, only when you want to
+start clean: QRQ preserves the complete previous history as
+`.confusions.csv.bak` and refuses to overwrite that backup.
+
+![F5 call-filter page with W4GNS 30-day weighted confusion window](docs/images/confusion-recency-settings.png)
+
+Use one variable at a time: establish clean-copy accuracy first, add a modest
+pileup level next, then use the confusion window to work on the mistakes that
+are current. Raise difficulty only after accurate sessions.
+
 -----------------------------------------------------------------------------
 
 COMPILE / INSTALL
@@ -160,35 +187,6 @@ starts it at a nearby pitch after a short delay, and mixes it under the target;
 the target remains the only accepted answer. F6 keeps the same secondary
 callsign with the replay. Pileup sessions are explicitly training-only and
 toplist-ineligible.
-
-## W4GNS pileup and confusion workflow
-
-Use these controls as a deliberate-skill loop, not a beginner lesson:
-
-1. Start clean: leave `pileuplevel=0`, `qrmlevel=0`, and
-   `confusionrecencydays=0` while establishing a current baseline.
-2. Add one challenge: press F5, then Tab to **Configuration 2/3: Audio**.
-   Use `P` to raise the secondary caller by 5% at a time. Start around 15–25%;
-   copy only the target call and use the one allowed F6 resend when necessary.
-3. Review what is current: press F5, Tab twice to **Configuration 3/3: Call
-   filters**, then use `C` to select 7, 30, 90, or 365 days. F7 and optional
-   `focusconfusions=1` use that same weighted window.
-4. Retire stale data deliberately: on that call-filter page press `R`, then
-   `y`. QRQ creates a `.confusions.csv.bak` backup first and never overwrites
-   an existing backup. Rename or archive that backup before a later reset.
-5. Increase only after accurate copy: raise pileup level or narrow the
-   confusion window—not both in the same session—so the result says which
-   skill changed.
-
-![F5 audio settings with W4GNS pileup caller level](docs/images/pileup-and-confusion-settings.png)
-
-*The audio page exposes `p/P` for the secondary caller level. The target is
-always the sole answer QRQ scores.*
-
-![F5 call-filter settings with W4GNS confusion recency controls](docs/images/confusion-recency-settings.png)
-
-*The call-filter page exposes `C` for the weighted window and `R` for the
-backup-preserving reset.*
 
 Options can be changed in the config file qrqrc or via the three-page F5 menu.
 This includes volume, QRN, QRM, pileup, QSB-style fading, fixed or random
