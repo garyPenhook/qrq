@@ -75,6 +75,10 @@ practice.
 - [x] Add a frequently-missed-item view and optional confusion-focused drill.
   Focus mode selects loaded items containing symbols from the operator's most
   common copy differences and is explicitly toplist-ineligible.
+- [x] Add W4GNS recency-weighted confusion feedback and a safe reset. The F5
+  call-filter page cycles all-history, 7-, 30-, 90-, and 365-day views; F7 and
+  focus drills share the weighted view. Reset preserves the old local file as
+  a non-overwritten `.bak` copy.
 - [x] Add a persistent spaced-review mode. It derives due items from the
   local item history using expanding success intervals and remains
   toplist-ineligible.
@@ -88,8 +92,9 @@ practice.
 - [~] Configurable pitch range, volume, spacing, and independent rise/fall times.
   F5 now exposes volume, QRN, fixed/random pitch, and the common rise/fall time;
   independent shaping and additional spacing controls need audio design.
-- [~] Optional QRM, QRN, fading, and pileup simulation. QRN, configurable
-  QSB-style fading, and co-channel CW QRM are available; pileup remains.
+- [x] Optional QRM, QRN, fading, and W4GNS pileup simulation. QRN,
+  configurable QSB-style fading, co-channel CW QRM, and a separately keyed,
+  nearby-pitch secondary caller are independently controllable.
 - [~] Terminal resize handling, configurable keys, and accessible color themes.
   POSIX terminals now refresh ncurses state after SIGWINCH; configurable keys
   and themes remain.

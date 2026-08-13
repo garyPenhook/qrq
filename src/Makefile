@@ -240,6 +240,7 @@ dist:
 	cp coreaudio.c coreaudio.h oss.c oss.h \
 		qrq-$(VERSION)
 	cp pulseaudio.h pulseaudio.c qrq-$(VERSION)
+	cp -r ../docs qrq-$(VERSION)
 	cp -r tests qrq-$(VERSION)
 	cp -r OSXExtras qrq-$(VERSION)
 	rm -rf qrq-$(VERSION)/OSXExtras/.svn/

@@ -29,6 +29,11 @@ reviewmisses=0
 # most common recorded copy differences; 0 = no, 1 = yes (not toplist comparable)
 # QRQ uses the normal filtered callbase until character-confusion data exists.
 focusconfusions=0
+# W4GNS recency weighting for confusion-focused drills and F7 statistics.
+# values: 0 = all history, or a 7, 30, 90, or 365 day weighted window.
+# Newest mistakes count up to four times more; pre-v2 undated records appear
+# only in the all-history view. Use F5 call filters, R, to reset safely.
+confusionrecencydays=0
 # schedule persistent review from the item-history file. A wrong item is due
 # next session; successful items return after 1, 3, 7, 15, then 31 later items.
 # values: 0 = no, 1 = yes (spaced-review sessions are not toplist comparable)
@@ -102,6 +107,11 @@ qrnlevel=0
 
 # co-channel CW interference as a percentage (0 = no QRM)
 qrmlevel=0
+
+# W4GNS pileup simulation: mix one independently selected secondary caller
+# with each target call. The target remains the only expected entry. 0 = off;
+# 5..100 controls the secondary caller level. Pileup sessions are training-only.
+pileuplevel=0
 
 # QSB-like slow signal fading depth as a percentage (0 = steady signal)
 qsblevel=0

@@ -11,8 +11,9 @@ tool while preserving its fast, keyboard-first contest trainer workflow.
   item; F7 shows the all-time average answer time for the current callsign.
 - [x] Add a per-item accuracy view. F7 highlights the most frequently missed
   call or word alongside overall item accuracy.
-- [ ] Add configurable recency weighting and a reset command for old
-  confusion data, so past mistakes do not hide current progress.
+- [x] Add W4GNS configurable recency weighting and a backup-preserving reset
+  command for old confusion data, so past mistakes do not hide current
+  progress.
 - [x] Offer a confusion-focused drill. The optional `focusconfusions` mode
   limits the next session to loaded calls or words containing symbols from
   the user's most frequent copy differences.
@@ -35,9 +36,9 @@ tool while preserving its fast, keyboard-first contest trainer workflow.
 
 ## Realism and accessibility
 
-- [~] Add independently configurable QRM, fading/QSB, and pileup simulation;
-  QRN, co-channel CW QRM, and QSB fade depth are independent. Pileup remains.
-  Keep the clean-signal mode available for controlled practice.
+- [x] Add independently configurable QRM, fading/QSB, and W4GNS pileup
+  simulation. QRN, co-channel CW QRM, QSB fade depth, and a secondary caller
+  are independent; clean-signal mode remains available for controlled work.
 - [ ] Add separate character-, word-, and extra-space timing controls with
   clear Farnsworth labels.
 - [ ] Add audio calibration, pitch sweep, and listening-comfort presets.
