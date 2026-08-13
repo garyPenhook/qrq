@@ -27,8 +27,10 @@ tool while preserving its fast, keyboard-first contest trainer workflow.
   generators still need dedicated modes.
 - [x] Add a delayed-answer batch mode that sends two to five items before
   accepting input, for pileup and short-term-copy practice.
-- [ ] Provide a goal mode such as "20 items at 95%" or "maintain 35 WpM for
-  five minutes", with a concise end-of-session recommendation.
+- [x] Provide performance goals with a concise end-of-session recommendation.
+  Session length plus accuracy target covers goals such as "20 items at 95%;"
+  `goalspeed` plus `goalduration` adds a sustained-speed goal, including the
+  example of holding 35 WpM for five minutes.
 
 ## Realism and accessibility
 

@@ -7,6 +7,7 @@
 #define QRQ_PRACTICE_NO_ITEM ((size_t)-1)
 #define QRQ_REVIEW_INTERVAL 3
 #define QRQ_PRACTICE_MAX_ANSWER_BATCH 5
+#define QRQ_PRACTICE_SUSTAINED_GOAL_MAX_SECONDS 3600
 
 struct qrq_review_queue {
 	size_t *items;
@@ -45,5 +46,13 @@ int qrq_practice_accuracy(size_t attempts, size_t errors);
  * item, and meet the optional accuracy target. */
 int qrq_practice_session_eligible(int attempt_valid, size_t completed,
 		size_t requested, int accuracy, int accuracy_target);
+
+/* A sustained goal requires a positive speed target and duration. It passes
+ * only after the full duration has elapsed without a speed violation. */
+int qrq_practice_sustained_goal_active(int speed_target, int duration_seconds);
+int qrq_practice_sustained_goal_expired(int speed_target, int duration_seconds,
+		uint64_t elapsed_milliseconds);
+int qrq_practice_sustained_goal_met(int speed_target, int duration_seconds,
+		uint64_t elapsed_milliseconds, int speed_violated);
 
 #endif

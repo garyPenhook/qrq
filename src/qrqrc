@@ -43,6 +43,12 @@ serialdigits=0
 # minimum whole-session accuracy for a local toplist entry; 0 disables it
 # values: 0 or 50..100
 accuracytarget=0
+# W4GNS sustained-copy goal: keep the adaptive speed at or above goalspeed
+# for goalduration seconds. Both values must be nonzero to enable the goal.
+# values: goalspeed = 0 or 10..5000 CpM; goalduration = 0..3600 seconds.
+# Sustained-goal sessions are not toplist comparable.
+goalspeed=0
+goalduration=0
 # optional callbase filters: comma-separated prefixes, digit/portable mode
 # (0 = any, 1 = required, 2 = excluded), and a character whitelist
 callprefixes=

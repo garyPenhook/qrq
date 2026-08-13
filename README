@@ -15,7 +15,7 @@ speeds, as needed for example in ham radio contesting.
 Credit: **W4GNS** designed and implemented every enhancement added in this
 fork after the upstream QRQ 0.3.5 baseline. These additions include safer
 data/configuration handling and builds; configurable session, speed, filter,
-review, and seeded-practice controls; persistent response-time, item-accuracy,
+review, seeded-practice, and sustained-goal controls; persistent response-time, item-accuracy,
 and character-confusion feedback; confusion-focused and spaced-review drills;
 delayed-answer batch copy; QSB, QRN, and CW QRM simulation; zero-padded
 contest serial-exchange practice; refreshed CWops practice data; and the
@@ -101,6 +101,14 @@ of that width: for example, `000` through `999`. This is a training-only
 contest-copy drill, so serial sessions are not toplist comparable. The `s`
 key cycles off, 3, 4, and 5 digits.
 
+W4GNS sustained-copy goals use `goalspeed` and `goalduration` together. Set a
+speed target in CpM and a duration in seconds (both nonzero) to copy until the
+duration expires while keeping the adaptive speed at or above the target. On
+F5's general page, `o` sets or raises the speed in 25-CpM steps, while `O`
+cycles the duration through 1, 3, 5, and 10 minutes. A speed drop fails the
+goal; the end-of-session message gives a concise next-step recommendation.
+Sustained goals are training-only and are not toplist comparable.
+
 Set `qsblevel` from 0 to 100 (or use `q/Q` on F5's audio page) to apply slow
 QSB-style fades to the signal. It is independent of QRN, so it can be used to
 practice weak-signal copy with or without background noise.
@@ -118,8 +126,8 @@ qrqrc.
 
 Only an ordinary, completed 50-call session is comparable in the toplist.
 Fixed-speed, unlimited-repeat, non-50-call, adaptive, review, batch-copy,
-serial-copy, and seeded sessions are still recorded in local history but are
-toplist-ineligible.
+serial-copy, sustained-goal, and seeded sessions are still recorded in local
+history but are toplist-ineligible.
 Aborted or incomplete sessions are also excluded. If an accuracy goal is set,
 the completed session must meet it.
 

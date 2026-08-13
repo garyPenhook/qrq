@@ -186,6 +186,8 @@ static size_t spaced_due_count=0;
 static int answerbatch=1;
 static int serialdigits=0;
 static int accuracytarget=0;
+static int goalspeed=0;
+static int goalduration=0;
 static unsigned int sessionseed=0;
 static int attemptvalid=1;				/* 1 = not using any "cheats" */
 static size_t nrofcalls=0;
@@ -437,6 +439,9 @@ int main (int argc, char *argv[]) {
 	int completedcalls = 0;
 	int attemptaccuracy;
 	int sessioneligible;
+	int sustainedgoal;
+	int sustainedgoalmet;
+	int sustainedgoalspeedviolated;
 	int toplist_score;
 	int made_error;
 	int i=0,j=0,k=0;						/* counter etc. */
@@ -445,6 +450,8 @@ int main (int argc, char *argv[]) {
 	int batch_frequencies[QRQ_PRACTICE_MAX_ANSWER_BATCH];
 	int batch_start;
 	int session_answerbatch;
+	int sessiongoalduration;
+	int sessiongoalspeed;
 	int stop_attempt;
 	size_t batch_count;
 	size_t batch_position;
@@ -457,6 +464,8 @@ int main (int argc, char *argv[]) {
 	uint64_t replay_duration_ms;
 	uint64_t response_finished_ms;
 	uint64_t response_ms;
+	uint64_t sustainedgoalelapsed_ms;
+	uint64_t sustainedgoalstart_ms;
 
 	if (argc == 2 && strcmp(argv[1], "--version") == 0) {
 		print_version();
@@ -532,7 +541,7 @@ int main (int argc, char *argv[]) {
 	read_config();
 
 	attemptvalid = 1;
-	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses || focusconfusions || spacedrepetition || answerbatch != 1 || serialdigits != 0 || sessionseed != 0) {
+	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses || focusconfusions || spacedrepetition || answerbatch != 1 || serialdigits != 0 || sessionseed != 0 || qrq_practice_sustained_goal_active(goalspeed, goalduration)) {
 		attemptvalid = 0;	
 	}
 
@@ -596,14 +605,20 @@ while (status == 1) {
 	mvwaddstr(mid_w,1,1, "Usage:");
 	mvwaddstr(mid_w,10,2, "F6                          F10       ");
 	wattroff(mid_w, A_BOLD);
-	if (unlimitedattempt) {
+	if (qrq_practice_sustained_goal_active(goalspeed, goalduration)) {
+		mvwprintw(mid_w,2,2, "Copy for %d sec, staying at %d CpM or higher.",
+				goalduration, goalspeed);
+		mvwaddstr(mid_w,3,2, "A drop below target fails this training-only goal.");
+	}
+	else if (unlimitedattempt) {
 		mvwaddstr(mid_w,2,2, "After entering your callsign, all random callsigns");
+		mvwaddstr(mid_w,3,2, "from a database will be sent. After each callsign,");
 	}
 	else {
 		mvwprintw(mid_w,2,2, "After entering your callsign, %d random callsigns",
 				sessionlength);
+		mvwaddstr(mid_w,3,2, "from a database will be sent. After each callsign,");
 	}
-	mvwaddstr(mid_w,3,2, "from a database will be sent. After each callsign,");
 	mvwaddstr(mid_w,4,2, "enter what you have heard. If you copied correctly,");
 	mvwaddstr(mid_w,5,2, "full points are credited and the speed increases by");
 	mvwprintw(mid_w,6,2, "+%d LpM; errors decrease it by %d LpM.",
@@ -694,13 +709,21 @@ while (status == 1) {
 		srand(sessionseed);
 	}
 	session_answerbatch = answerbatch;
+	sessiongoalspeed = goalspeed;
+	sessiongoalduration = goalduration;
+	sustainedgoal = qrq_practice_sustained_goal_active(sessiongoalspeed,
+			sessiongoalduration);
+	sustainedgoalstart_ms = timestamp_milliseconds();
+	sustainedgoalspeedviolated = sustainedgoal && speed < sessiongoalspeed;
+	sustainedgoalelapsed_ms = 0;
+	sustainedgoalmet = 0;
 
 	/****** send a configured number of calls, ask for input, score ******/
     start_summary_file();
 	if (nrofcalls > (size_t)INT_MAX) {
 		attempt_limit = INT_MAX;
 	}
-	else if (unlimitedattempt || sessionlength > (int)nrofcalls) {
+	else if (sustainedgoal || unlimitedattempt || sessionlength > (int)nrofcalls) {
 		attempt_limit = (int)nrofcalls;
 	}
 	else {
@@ -709,7 +732,11 @@ while (status == 1) {
 	qrq_review_queue_clear(&review_queue);
 
 	for (callnr = 1, stop_attempt = 0;
-			callnr <= attempt_limit && !stop_attempt;) {
+			callnr <= attempt_limit && !stop_attempt && (!sustainedgoal ||
+			!qrq_practice_sustained_goal_expired(sessiongoalspeed,
+					sessiongoalduration,
+					elapsed_milliseconds(sustainedgoalstart_ms,
+					timestamp_milliseconds())));) {
 		batch_start = callnr;
 		batch_target = qrq_practice_answer_batch_size(
 				(size_t)(attempt_limit - callnr + 1), session_answerbatch);
@@ -717,7 +744,10 @@ while (status == 1) {
 
 		/* Send one or more items before accepting any entry. Reserving each
 		 * selected item prevents duplicate calls within a delayed batch. */
-		while (batch_count < batch_target && callnr <= attempt_limit) {
+		while (batch_count < batch_target && callnr <= attempt_limit &&
+				(!sustainedgoal || !qrq_practice_sustained_goal_expired(sessiongoalspeed,
+					sessiongoalduration, elapsed_milliseconds(sustainedgoalstart_ms,
+					timestamp_milliseconds())))) {
 			wait_morse_thread();
 			if (reviewmisses && callnr % QRQ_REVIEW_INTERVAL == 0 &&
 					qrq_review_queue_take(&review_queue, &selected_index)) {
@@ -864,6 +894,9 @@ while (status == 1) {
 
 			score = qrq_score_accumulate(score,
 					calc_score(calls[i], input, speed, tmp, f6pressed));
+			if (sustainedgoal && speed < sessiongoalspeed) {
+				sustainedgoalspeedviolated = 1;
+			}
 			completedcalls++;
 			update_score();
 			made_error = strcmp(tmp, "-") != 0;
@@ -900,6 +933,14 @@ while (status == 1) {
 	}
 
     close_summary_file();
+	sustainedgoalelapsed_ms = elapsed_milliseconds(sustainedgoalstart_ms,
+			timestamp_milliseconds());
+	if (sustainedgoal && speed < sessiongoalspeed) {
+		sustainedgoalspeedviolated = 1;
+	}
+	sustainedgoalmet = sustainedgoal && !stop_attempt &&
+			qrq_practice_sustained_goal_met(sessiongoalspeed, sessiongoalduration,
+					sustainedgoalelapsed_ms, sustainedgoalspeedviolated);
 	attemptaccuracy = qrq_practice_accuracy((size_t)completedcalls, (size_t)errornr);
 	sessioneligible = qrq_practice_session_eligible(attemptvalid,
 			(size_t)completedcalls, (size_t)sessionlength, attemptaccuracy,
@@ -922,9 +963,24 @@ while (status == 1) {
 	
 	curs_set(0);
 	wattron(bot_w,A_BOLD);
-	if (accuracytarget != 0) {
-		mvwprintw(bot_w,1,1, "Accuracy %d%% (goal %d%%). Press any key!",
-				attemptaccuracy, accuracytarget);
+	mvwaddstr(bot_w,1,1, "                                                          ");
+	if (sustainedgoalmet) {
+		mvwprintw(bot_w,1,1, "Goal met: %d CpM for %d sec. Raise it next time!",
+				sessiongoalspeed, sessiongoalduration);
+	}
+	else if (sustainedgoal && sustainedgoalspeedviolated) {
+		mvwprintw(bot_w,1,1, "Goal missed: speed fell below %d CpM. Reduce it by 25.",
+				sessiongoalspeed);
+	}
+	else if (sustainedgoal) {
+		mvwprintw(bot_w,1,1, "Goal stopped: restart and hold %d CpM for %d sec.",
+				sessiongoalspeed, sessiongoalduration);
+	}
+	else if (accuracytarget != 0) {
+		mvwprintw(bot_w,1,1, "Accuracy %d%% (goal %d%%). %s",
+				attemptaccuracy, accuracytarget,
+				attemptaccuracy >= accuracytarget ? "Raise it next time!" :
+				"Repeat the same goal.");
 	}
 	else {
 		mvwprintw(bot_w,1,1, "Attempt finished. Press any key to continue!");
@@ -1138,6 +1194,18 @@ while ((j = getch()) != 0) {
 			else if (accuracytarget == 98) accuracytarget = 100;
 			else accuracytarget = 0;
 			break;
+		case 'o':
+			if (goalspeed == 0) goalspeed = initialspeed;
+			else if (goalspeed <= QRQ_SPEED_MAX - 25) goalspeed += 25;
+			else goalspeed = 0;
+			break;
+		case 'O':
+			if (goalduration == 0) goalduration = 60;
+			else if (goalduration == 60) goalduration = 180;
+			else if (goalduration == 180) goalduration = 300;
+			else if (goalduration == 300) goalduration = 600;
+			else goalduration = 0;
+			break;
 		case 'u':
 				unlimitedattempt = (unlimitedattempt ? 0 : 1);
 			break;
@@ -1261,7 +1329,7 @@ while ((j = getch()) != 0) {
 	if (!callnr) {
 		attemptvalid = 1;
 	}
-	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses || focusconfusions || spacedrepetition || answerbatch != 1 || serialdigits != 0 || sessionseed != 0) {
+	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses || focusconfusions || spacedrepetition || answerbatch != 1 || serialdigits != 0 || sessionseed != 0 || qrq_practice_sustained_goal_active(goalspeed, goalduration)) {
 		attemptvalid = 0;	
 	}
 
@@ -1396,13 +1464,11 @@ void update_parameter_dialog (void) {
 		mvwprintw(conf_w,12,2, "Callsign database:     %-15s"
 					"      d (%zu)", basename(cbfilename),nrofcalls);
 	}
-	mvwprintw(conf_w,13,2, "Adaptive*: %-3s Review*: %-3s Goal: %-3d%% a/r/g",
+	mvwprintw(conf_w,13,2, "Adaptive*: %-3s Review*: %-3s Accuracy*: %-3d%% a/r/g",
 			adaptiveselection ? "yes" : "no", reviewmisses ? "yes" : "no",
 			accuracytarget);
-#ifdef OSS
-	mvwprintw(conf_w,14,2, "DSP device:            %-15s"
-					"      e", dspdevice);
-#endif
+	mvwprintw(conf_w,14,2, "Sustain goal*: %4d CpM / %4d sec      o/O",
+			goalspeed, goalduration);
 	mvwprintw(conf_w,15,4, ": Play CW sample");
 	mvwprintw(conf_w,15,25, ": Save config");
 	mvwprintw(conf_w,15,44, ": Exit");
@@ -1881,6 +1947,10 @@ static int update_score(void) {
 	else if (answerbatch > 1) {
 		mvwprintw(top_w, 1, 27, "[batch copy: %d]", answerbatch);
 	}
+	else if (qrq_practice_sustained_goal_active(goalspeed, goalduration)) {
+		mvwprintw(top_w, 1, 27, "[sustain: %d/%ds]", goalspeed,
+				goalduration);
+	}
 	else if (serialdigits != 0) {
 		mvwprintw(top_w, 1, 27, "[serials: %d digits]", serialdigits);
 	}
@@ -2325,6 +2395,18 @@ static int read_config(void) {
 					config_value_error(line, key, value);
 				}
 			}
+		} else if (strcmp(key, "goalspeed") == 0) {
+			if (config_int_value(line, key, value, 0, QRQ_SPEED_MAX,
+					&parsed_int) == 0) {
+				if (parsed_int == 0 || parsed_int >= QRQ_SPEED_MIN) {
+					goalspeed = parsed_int;
+				} else {
+					config_value_error(line, key, value);
+				}
+			}
+		} else if (strcmp(key, "goalduration") == 0) {
+			(void)config_int_value(line, key, value, 0,
+					QRQ_PRACTICE_SUSTAINED_GOAL_MAX_SECONDS, &goalduration);
 		} else if (strcmp(key, "sessionseed") == 0) {
 			if (qrq_config_parse_uint(value, &parsed_seed) == 0) {
 				sessionseed = parsed_seed;
@@ -2782,7 +2864,7 @@ static int save_config (void) {
 		"accuracytarget", "callprefixes", "digitmode", "portablemode",
 		"allowedchars", "sessionseed", "volume", "minpitch", "maxpitch",
 		"qrnlevel", "qsblevel", "qrmlevel", "samplerate", "focusconfusions", "spacedrepetition",
-		"answerbatch", "serialdigits"
+		"answerbatch", "serialdigits", "goalspeed", "goalduration"
 	};
 	FILE *fh = NULL;
 	char tmp[PATH_MAX + 80];
@@ -2864,7 +2946,9 @@ static int save_config (void) {
 			case 34: written = snprintf(tmp, sizeof(tmp), "%d", focusconfusions); break;
 			case 35: written = snprintf(tmp, sizeof(tmp), "%d", spacedrepetition); break;
 			case 36: written = snprintf(tmp, sizeof(tmp), "%d", answerbatch); break;
-			default: written = snprintf(tmp, sizeof(tmp), "%d", serialdigits); break;
+			case 37: written = snprintf(tmp, sizeof(tmp), "%d", serialdigits); break;
+			case 38: written = snprintf(tmp, sizeof(tmp), "%d", goalspeed); break;
+			default: written = snprintf(tmp, sizeof(tmp), "%d", goalduration); break;
 		}
 		if (written < 0 || (size_t)written >= sizeof(tmp)) {
 			fprintf(stderr, "Unable to format config option '%s'.\n", confopts[i]);

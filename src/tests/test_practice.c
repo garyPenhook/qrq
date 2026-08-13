@@ -63,5 +63,14 @@ int main(void) {
 	assert(qrq_practice_session_eligible(1, 50, 50, 90, 90) == 1);
 	assert(qrq_practice_session_eligible(1, 0, 0, 100, 0) == 0);
 	assert(qrq_practice_session_eligible(1, 50, 50, 101, 0) == 0);
+	assert(qrq_practice_sustained_goal_active(175, 300) == 1);
+	assert(qrq_practice_sustained_goal_active(0, 300) == 0);
+	assert(qrq_practice_sustained_goal_active(175, 0) == 0);
+	assert(qrq_practice_sustained_goal_active(175,
+			QRQ_PRACTICE_SUSTAINED_GOAL_MAX_SECONDS + 1) == 0);
+	assert(qrq_practice_sustained_goal_expired(175, 300, UINT64_C(299999)) == 0);
+	assert(qrq_practice_sustained_goal_expired(175, 300, UINT64_C(300000)) == 1);
+	assert(qrq_practice_sustained_goal_met(175, 300, UINT64_C(300000), 0) == 1);
+	assert(qrq_practice_sustained_goal_met(175, 300, UINT64_C(300000), 1) == 0);
 	return 0;
 }

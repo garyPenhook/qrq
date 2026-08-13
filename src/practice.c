@@ -145,3 +145,25 @@ int qrq_practice_session_eligible(int attempt_valid, size_t completed,
 	}
 	return accuracy_target == 0 || accuracy >= accuracy_target;
 }
+
+int qrq_practice_sustained_goal_active(int speed_target, int duration_seconds) {
+	return speed_target > 0 && duration_seconds > 0 &&
+			duration_seconds <= QRQ_PRACTICE_SUSTAINED_GOAL_MAX_SECONDS;
+}
+
+int qrq_practice_sustained_goal_expired(int speed_target, int duration_seconds,
+		uint64_t elapsed_milliseconds) {
+	uint64_t duration_milliseconds;
+
+	if (!qrq_practice_sustained_goal_active(speed_target, duration_seconds)) {
+		return 0;
+	}
+	duration_milliseconds = (uint64_t)duration_seconds * UINT64_C(1000);
+	return elapsed_milliseconds >= duration_milliseconds;
+}
+
+int qrq_practice_sustained_goal_met(int speed_target, int duration_seconds,
+		uint64_t elapsed_milliseconds, int speed_violated) {
+	return !speed_violated && qrq_practice_sustained_goal_expired(speed_target,
+			duration_seconds, elapsed_milliseconds);
+}

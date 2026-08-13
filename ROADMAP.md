@@ -53,6 +53,8 @@ practice.
 - [x] Add zero-padded three-, four-, and five-digit serial-exchange practice.
   The F5 call-filter page can replace the selected database with the complete
   serial range for a training-only contest-copy session.
+- [x] Add sustained-copy performance goals. W4GNS goals can require a chosen
+  speed for 1, 3, 5, or 10 minutes and give an immediate end recommendation.
 
 ## Phase 4: Feedback and statistics
 
