@@ -40,6 +40,10 @@ answerbatch=1
 # generate zero-padded contest serial exchanges instead of loading a callbase
 # values: 0 = off, 3..5 = number of serial digits (training-only)
 serialdigits=0
+# W4GNS portable-call generator: replace eligible base calls with /P, /M,
+# and /MM variants. This overrides portablemode while enabled and is
+# training-only.
+portablevariants=0
 # minimum whole-session accuracy for a local toplist entry; 0 disables it
 # values: 0 or 50..100
 accuracytarget=0

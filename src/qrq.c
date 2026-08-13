@@ -176,6 +176,7 @@ static int maxcalllength=CALL_MAX;
 static char callprefixes[128]="";
 static int digitmode=0;
 static int portablemode=0;
+static int portablevariants=0;
 static char allowedchars[CALL_MAX + 1]="";
 static int adaptiveselection=0;
 static int reviewmisses=0;
@@ -541,7 +542,7 @@ int main (int argc, char *argv[]) {
 	read_config();
 
 	attemptvalid = 1;
-	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses || focusconfusions || spacedrepetition || answerbatch != 1 || serialdigits != 0 || sessionseed != 0 || qrq_practice_sustained_goal_active(goalspeed, goalduration)) {
+	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses || focusconfusions || spacedrepetition || answerbatch != 1 || serialdigits != 0 || portablevariants || sessionseed != 0 || qrq_practice_sustained_goal_active(goalspeed, goalduration)) {
 		attemptvalid = 0;	
 	}
 
@@ -1073,6 +1074,7 @@ while ((j = getch()) != 0) {
 			case '4': if (maxcalllength < CALL_MAX) maxcalllength++; handled = 1; break;
 			case 'i': digitmode = (digitmode + 1) % 3; handled = 1; break;
 			case 'p': portablemode = (portablemode + 1) % 3; handled = 1; break;
+			case 'P': portablevariants = portablevariants ? 0 : 1; handled = 1; break;
 			case 'd':
 				if (!callnr) {
 					curs_set(1);
@@ -1329,7 +1331,7 @@ while ((j = getch()) != 0) {
 	if (!callnr) {
 		attemptvalid = 1;
 	}
-	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses || focusconfusions || spacedrepetition || answerbatch != 1 || serialdigits != 0 || sessionseed != 0 || qrq_practice_sustained_goal_active(goalspeed, goalduration)) {
+	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses || focusconfusions || spacedrepetition || answerbatch != 1 || serialdigits != 0 || portablevariants || sessionseed != 0 || qrq_practice_sustained_goal_active(goalspeed, goalduration)) {
 		attemptvalid = 0;	
 	}
 
@@ -1404,8 +1406,8 @@ void update_parameter_dialog (void) {
 		mvwprintw(conf_w, 3, 2, "Maximum call length:      %2d       3/4 -/+", maxcalllength);
 		mvwprintw(conf_w, 4, 2, "Digits:                   %-8s i cycle",
 				filter_mode_names[digitmode]);
-		mvwprintw(conf_w, 5, 2, "Portable suffix:          %-8s p cycle",
-				filter_mode_names[portablemode]);
+		mvwprintw(conf_w, 5, 2, "Portable suffix: %-8s p  Variants*: %-3s P",
+				filter_mode_names[portablemode], portablevariants ? "yes" : "no");
 		mvwprintw(conf_w, 6, 2, "Call prefixes: %-25.25s x", callprefixes[0] ? callprefixes : "(any)");
 		mvwprintw(conf_w, 7, 2, "Allowed chars: %-25.25s y", allowedchars[0] ? allowedchars : "(any)");
 		mvwprintw(conf_w, 8, 2, "Serial exchanges*:        %-10s s", serial_mode);
@@ -1419,6 +1421,9 @@ void update_parameter_dialog (void) {
 		if (serialdigits != 0) {
 			mvwaddstr(conf_w, 13, 2,
 					"Serial generator overrides callsign database.");
+		} else if (portablevariants) {
+			mvwaddstr(conf_w, 13, 2,
+					"Portable generator overrides the suffix filter.");
 		} else if (!callnr) {
 			mvwprintw(conf_w, 13, 2, "Callsign database: %-24.24s d", basename(cbfilename));
 		}
@@ -2384,6 +2389,8 @@ static int read_config(void) {
 			(void)config_int_value(line, key, value, 0, 2, &digitmode);
 		} else if (strcmp(key, "portablemode") == 0) {
 			(void)config_int_value(line, key, value, 0, 2, &portablemode);
+		} else if (strcmp(key, "portablevariants") == 0) {
+			(void)config_int_value(line, key, value, 0, 1, &portablevariants);
 		} else if (strcmp(key, "allowedchars") == 0) {
 			(void)config_graph_string_value(line, key, value, allowedchars,
 					sizeof(allowedchars));
@@ -2864,7 +2871,7 @@ static int save_config (void) {
 		"accuracytarget", "callprefixes", "digitmode", "portablemode",
 		"allowedchars", "sessionseed", "volume", "minpitch", "maxpitch",
 		"qrnlevel", "qsblevel", "qrmlevel", "samplerate", "focusconfusions", "spacedrepetition",
-		"answerbatch", "serialdigits", "goalspeed", "goalduration"
+		"answerbatch", "serialdigits", "goalspeed", "goalduration", "portablevariants"
 	};
 	FILE *fh = NULL;
 	char tmp[PATH_MAX + 80];
@@ -2948,7 +2955,8 @@ static int save_config (void) {
 			case 36: written = snprintf(tmp, sizeof(tmp), "%d", answerbatch); break;
 			case 37: written = snprintf(tmp, sizeof(tmp), "%d", serialdigits); break;
 			case 38: written = snprintf(tmp, sizeof(tmp), "%d", goalspeed); break;
-			default: written = snprintf(tmp, sizeof(tmp), "%d", goalduration); break;
+			case 39: written = snprintf(tmp, sizeof(tmp), "%d", goalduration); break;
+			default: written = snprintf(tmp, sizeof(tmp), "%d", portablevariants); break;
 		}
 		if (written < 0 || (size_t)written >= sizeof(tmp)) {
 			fprintf(stderr, "Unable to format config option '%s'.\n", confopts[i]);
@@ -3628,7 +3636,7 @@ static size_t read_callbase(void) {
 		.maximum_length = (size_t)maxcalllength,
 		.prefixes = callprefixes,
 		.digit_mode = digitmode,
-		.portable_mode = portablemode,
+		.portable_mode = portablevariants ? 2 : portablemode,
 		.allowed_chars = allowedchars,
 	};
 
@@ -3645,6 +3653,13 @@ static size_t read_callbase(void) {
 		endwin();
 		fprintf(stderr, "Error: Couldn't load callsign database '%s': %s\n",
 				cbfilename, strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+	if (serialdigits == 0 && portablevariants &&
+			qrq_callbase_generate_portable_variants(&loaded_callbase) != 0) {
+		endwin();
+		fprintf(stderr, "Error: Couldn't generate portable calls: %s\n",
+				strerror(errno));
 		exit(EXIT_FAILURE);
 	}
 	apply_confusion_focus();

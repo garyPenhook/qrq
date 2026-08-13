@@ -23,8 +23,9 @@ tool while preserving its fast, keyboard-first contest trainer workflow.
   successful items return after 1, 3, 7, 15, then 31 subsequent attempts.
 - [~] Provide focused generators for digits, serial exchanges, prefixes,
   portable calls, prosigns, punctuation, and user-supplied text. Zero-padded
-  three-, four-, and five-digit serial exchanges are available; the remaining
-  generators still need dedicated modes.
+  three-, four-, and five-digit serial exchanges plus portable /P, /M, and
+  /MM variants are available; the remaining generators still need dedicated
+  modes.
 - [x] Add a delayed-answer batch mode that sends two to five items before
   accepting input, for pileup and short-term-copy practice.
 - [x] Provide performance goals with a concise end-of-session recommendation.

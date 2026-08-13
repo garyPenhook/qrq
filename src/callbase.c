@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 static int normalize_line(char *line, size_t *length, int at_end_of_file) {
 	size_t line_length = strlen(line);
@@ -146,6 +147,100 @@ int qrq_callbase_generate_serials(unsigned int digits,
 		}
 		memcpy(callbase->items[index], serial, (size_t)written + 1);
 	}
+	return 0;
+}
+
+int qrq_callbase_generate_portable_variants(struct qrq_callbase *callbase) {
+	static const char *const suffixes[] = {"/P", "/M", "/MM"};
+	char **items;
+	size_t generated = 0;
+	size_t index;
+	size_t suffix_index;
+	size_t max_length = 0;
+	size_t item_index = 0;
+
+	if (callbase == NULL || callbase->items == NULL || callbase->count == 0) {
+		errno = EINVAL;
+		return -1;
+	}
+	for (index = 0; index < callbase->count; ++index) {
+		size_t length;
+
+		if (strchr(callbase->items[index], '/') != NULL) {
+			continue;
+		}
+		length = strlen(callbase->items[index]);
+		for (suffix_index = 0;
+				suffix_index < sizeof(suffixes) / sizeof(suffixes[0]);
+				suffix_index++) {
+			size_t suffix_length = strlen(suffixes[suffix_index]);
+			size_t variant_length;
+
+			if (length > QRQ_CALLBASE_MAX_LENGTH - suffix_length) {
+				continue;
+			}
+			variant_length = length + suffix_length;
+			if (generated == SIZE_MAX) {
+				errno = EOVERFLOW;
+				return -1;
+			}
+			generated++;
+			if (variant_length > max_length) {
+				max_length = variant_length;
+			}
+		}
+	}
+	if (generated == 0) {
+		errno = ENODATA;
+		return -1;
+	}
+	if (generated > SIZE_MAX / sizeof(*items)) {
+		errno = EOVERFLOW;
+		return -1;
+	}
+	items = calloc(generated, sizeof(*items));
+	if (items == NULL) {
+		return -1;
+	}
+	for (index = 0; index < callbase->count; ++index) {
+		const char *base = callbase->items[index];
+		size_t length;
+
+		if (strchr(base, '/') != NULL) {
+			continue;
+		}
+		length = strlen(base);
+		for (suffix_index = 0;
+				suffix_index < sizeof(suffixes) / sizeof(suffixes[0]);
+				suffix_index++) {
+			const char *suffix = suffixes[suffix_index];
+			size_t suffix_length = strlen(suffix);
+			size_t variant_length;
+
+			if (length > QRQ_CALLBASE_MAX_LENGTH - suffix_length) {
+				continue;
+			}
+			variant_length = length + suffix_length;
+			items[item_index] = malloc(variant_length + 1);
+			if (items[item_index] == NULL) {
+				while (item_index != 0) {
+					free(items[--item_index]);
+				}
+				free(items);
+				return -1;
+			}
+			memcpy(items[item_index], base, length);
+			memcpy(items[item_index] + length, suffix, suffix_length + 1);
+			item_index++;
+		}
+	}
+	for (index = 0; index < callbase->count; ++index) {
+		free(callbase->items[index]);
+	}
+	free(callbase->items);
+	callbase->items = items;
+	callbase->count = generated;
+	callbase->max_length = max_length;
 	return 0;
 }
 

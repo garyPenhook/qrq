@@ -18,7 +18,7 @@ data/configuration handling and builds; configurable session, speed, filter,
 review, seeded-practice, and sustained-goal controls; persistent response-time, item-accuracy,
 and character-confusion feedback; confusion-focused and spaced-review drills;
 delayed-answer batch copy; QSB, QRN, and CW QRM simulation; zero-padded
-contest serial-exchange practice; refreshed CWops practice data; and the
+contest serial-exchange and portable-call practice; refreshed CWops practice data; and the
 `qrq --version` console command. The feature descriptions below document
 these W4GNS enhancements in detail.
 
@@ -101,6 +101,13 @@ of that width: for example, `000` through `999`. This is a training-only
 contest-copy drill, so serial sessions are not toplist comparable. The `s`
 key cycles off, 3, 4, and 5 digits.
 
+Set `portablevariants=1` (or use `P` on F5's call-filter page) for W4GNS
+portable-call practice. QRQ replaces the eligible base calls with `/P`, `/M`,
+and `/MM` variants, providing a focused suffix-copy session. The portable
+suffix filter is intentionally overridden while this generator is active;
+forms longer than QRQ's 28-character item limit are skipped. Portable-variant
+sessions are training-only and are not toplist comparable.
+
 W4GNS sustained-copy goals use `goalspeed` and `goalduration` together. Set a
 speed target in CpM and a duration in seconds (both nonzero) to copy until the
 duration expires while keeping the adaptive speed at or above the target. On
@@ -127,7 +134,8 @@ qrqrc.
 Only an ordinary, completed 50-call session is comparable in the toplist.
 Fixed-speed, unlimited-repeat, non-50-call, adaptive, review, batch-copy,
 serial-copy, sustained-goal, and seeded sessions are still recorded in local
-history but are toplist-ineligible.
+history but are toplist-ineligible. Portable-variant sessions are also
+toplist-ineligible.
 Aborted or incomplete sessions are also excluded. If an accuracy goal is set,
 the completed session must meet it.
 

@@ -34,6 +34,10 @@ The call-filter page can generate zero-padded three-, four-, or five-digit
 contest serial exchanges in place of a callsign database. These serial-copy
 sessions are training-only and are not comparable toplist entries.
 
+The W4GNS portable-call generator replaces eligible base calls with /P, /M,
+and /MM variants. It overrides the ordinary portable-suffix filter and is a
+training-only, non-comparable session.
+
 W4GNS sustained-copy goals combine a target speed with a duration. The goal
 passes only when the operator remains at or above the configured speed until
 the duration expires; QRQ reports a concise result and next-step recommendation.
@@ -41,8 +45,8 @@ Sustained goals are training-only and are not comparable toplist entries.
 
 Only completed, ordinary 50-call sessions are added to the comparable local
 toplist. Fixed-speed, unlimited-repeat, non-50-call, adaptive, missed-item
-review, serial-copy, sustained-goal, and seeded sessions remain in history but are
-toplist-ineligible.
+review, serial-copy, portable-variant, sustained-goal, and seeded sessions
+remain in history but are toplist-ineligible.
 Aborted sessions are excluded, and an optional accuracy goal must be met.
 
 .SH OPTIONS

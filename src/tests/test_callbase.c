@@ -28,6 +28,16 @@ int main(void) {
 	assert(qrq_callbase_retain_symbols(&callbase, "Z") == 1);
 	assert(callbase.count == 2);
 	qrq_callbase_free(&callbase);
+	errno = 0;
+	assert(qrq_callbase_generate_portable_variants(NULL) == -1 && errno == EINVAL);
+	assert(qrq_callbase_load(path, &filter, &callbase) == 0);
+	assert(qrq_callbase_generate_portable_variants(&callbase) == 0);
+	assert(callbase.count == 9 && callbase.max_length == 8);
+	assert(strcmp(callbase.items[0], "K1ABC/P") == 0);
+	assert(strcmp(callbase.items[1], "K1ABC/M") == 0);
+	assert(strcmp(callbase.items[2], "K1ABC/MM") == 0);
+	assert(strcmp(callbase.items[3], "DE/P") == 0);
+	qrq_callbase_free(&callbase);
 
 	errno = 0;
 	assert(qrq_callbase_generate_serials(2, &callbase) == -1 && errno == EINVAL);
