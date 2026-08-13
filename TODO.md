@@ -126,6 +126,60 @@ The OSS and PulseAudio backends both build locally.
    design decision before implementation.
 9. [x] Add a warning-free strict C17 syntax gate with `-Werror`.
 
+## Follow-up from the 2026-08-13 operational and code review
+
+The review passed the focused ASan/UBSan, Valgrind, GCC/Clang, and staging
+checks. The items below are the remaining actionable findings, ordered by
+priority.
+
+### High priority
+
+- [x] Make `qrqscore` fail safely when the toplist servers are unavailable.
+  Limit retries to the declared endpoints, set an explicit network timeout,
+  report a final error, and never continue with an undefined URL. Validate
+  every downloaded record against the local fixed-width toplist format; hold a
+  file lock and replace the local file atomically only after a complete,
+  validated merge. Preserve an existing backup instead of silently overwriting
+  it, and select the upload row by exact callsign rather than a substring.
+- [x] Make sustained-copy goals continue until their configured duration
+  expires. The current loop caps sustained mode to one pass through the
+  callbase, so a one-item custom drill ends almost immediately. Permit
+  replacement after a full pass while preserving no-duplicate behavior within
+  an answer batch. A PTY regression test covers a one-item custom drill that
+  advances into a second pass; small custom drills, generated serials, and
+  duration/speed-goal completion remain under the integration-harness item
+  below.
+- [x] Honor `DESTDIR` in the non-bundle `uninstall` target. Today a staged
+  `make uninstall DESTDIR=...` removes files from the live `PREFIX` instead of
+  the stage tree. Cover staged install/uninstall with an automated packaging
+  check.
+
+### Medium priority
+
+- [x] Install the FreeDesktop launcher and icon on Linux. The repository ships
+  `src/qrq.desktop` and `src/qrq.png`, but `make install` and `make dist` omit
+  the desktop integration. Install the desktop file under
+  `share/applications`, install a correctly named icon in an appropriate icon
+  hierarchy, and remove both during uninstall.
+- [x] Make the production build as strict and reproducible as CI. Define the
+  C language standard and baseline warning set for `all`, add dependency-file
+  generation for headers, and give `append_summary()` a compiler printf-format
+  annotation so `-Wformat=2 -Werror` succeeds and checks every caller.
+- [x] Repair the macOS bundle launcher for paths containing spaces. Replace
+  its unquoted backtick/sed path extraction with a quoted `dirname`-based
+  launcher that `exec`s `/usr/bin/open`.
+
+### Test and operational coverage
+
+- [x] Add a mock audio backend and PTY-driven smoke test for the main ncurses
+  workflow. It now covers startup, one real session, summary display, and
+  orderly shutdown without sound hardware.
+- [ ] Extend PTY coverage to settings persistence and duration/speed-goal
+  completion. Three-digit serial and two-item custom-drill sessions verify
+  generator/custom modes and complete their configured items. Retain platform
+  compile jobs, then add backend-appropriate runtime/failure tests for
+  PulseAudio, OSS, Core Audio, and Windows/PDCurses.
+
 ## Useful inspection commands
 
 ```sh

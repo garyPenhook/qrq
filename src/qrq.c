@@ -78,6 +78,13 @@ typedef int AUDIO_HANDLE;
 #define CAPITALS_ON   1
 #define CAPITALS_OFF  0
 
+#if defined(__GNUC__) || defined(__clang__)
+#define QRQ_PRINTF_FORMAT(format_index, argument_index) \
+	__attribute__((format(printf, format_index, argument_index)))
+#else
+#define QRQ_PRINTF_FORMAT(format_index, argument_index)
+#endif
+
 #define CALL_MAX    28    /* maximum allowed length of a call/word. limit to 28 so we can fit word + correction into the window */
 #define PRACTICE_ITEMS_MAX 256
 
@@ -102,6 +109,11 @@ typedef int AUDIO_HANDLE;
 #ifdef PA
 #include "pulseaudio.h"
 typedef void *AUDIO_HANDLE;
+#endif
+
+#ifdef MOCK_AUDIO
+#include "mockaudio.h"
+typedef int AUDIO_HANDLE;
 #endif
 
 #include "score.h"
@@ -266,7 +278,8 @@ static void activate_selected_parameter(void);
 static void mark_selected_parameter(void);
 static void start_summary_file(void);
 static void close_summary_file(void);
-static int append_summary(const char *format, ...);
+static int append_summary(const char *format, ...) QRQ_PRINTF_FORMAT(1, 2);
+static int append_summary_formatted(const char *format, ...);
 #ifndef WIN32
 static void note_terminal_resize(int signal_number);
 static void apply_terminal_resize(void);
@@ -745,10 +758,10 @@ while (status == 1) {
 
 	/****** send a configured number of calls, ask for input, score ******/
     start_summary_file();
-	if (nrofcalls > (size_t)INT_MAX) {
+	if (sustainedgoal || nrofcalls > (size_t)INT_MAX) {
 		attempt_limit = INT_MAX;
 	}
-	else if (sustainedgoal || unlimitedattempt || sessionlength > (int)nrofcalls) {
+	else if (unlimitedattempt || sessionlength > (int)nrofcalls) {
 		attempt_limit = (int)nrofcalls;
 	}
 	else {
@@ -765,6 +778,9 @@ while (status == 1) {
 		batch_start = callnr;
 		batch_target = qrq_practice_answer_batch_size(
 				(size_t)(attempt_limit - callnr + 1), session_answerbatch);
+		if (sustainedgoal && batch_target > nrofcalls) {
+			batch_target = nrofcalls;
+		}
 		batch_count = 0;
 
 		/* Send one or more items before accepting any entry. Reserving each
@@ -792,6 +808,17 @@ while (status == 1) {
 				} else {
 					i = (int)selected_index;
 				}
+			}
+			if (i < 0 && sustainedgoal) {
+				/* Sustained goals may span more than one pass through a small
+				 * callbase. Reset only between batches, which keeps each delayed
+				 * answer batch free of duplicate selections. */
+				memset(call_used, 0, nrofcalls * sizeof(*call_used));
+				selected_index = qrq_practice_choose_scheduled(nrofcalls, call_used,
+						call_mistakes, adaptiveselection, call_spaced_due,
+						spacedrepetition, (uint32_t)rand());
+				i = selected_index == QRQ_PRACTICE_NO_ITEM ||
+						selected_index > (size_t)INT_MAX ? -1 : (int)selected_index;
 			}
 			if (i < 0) {
 				fprintf(stderr, "No unused callbase entries remain.\n");
@@ -2113,7 +2140,7 @@ static int calc_score (char * realcall, char * input, int spd, char * output, in
 	maxspeed = state.maxspeed;
 	errornr = state.error_count;
 
-	if (append_summary(summary_scr_fmt, realcall, input, output, spd, spd/5,
+	if (append_summary_formatted(summary_scr_fmt, realcall, input, output, spd, spd/5,
 			score, f6pressed ? '*' : ' ') != 0) {
 		summary_failed = 1;
 	}
@@ -2121,18 +2148,22 @@ static int calc_score (char * realcall, char * input, int spd, char * output, in
     return score;
 }
 
-static int append_summary(const char *format, ...) {
-	va_list args;
+/* Runtime-generated column-width formats are bounded before they reach this
+ * helper. Literal callers use append_summary() below and retain compiler
+ * printf-format checking. */
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+#endif
+static int append_summaryv(const char *format, va_list args) {
 	va_list args_copy;
 	char *resized;
 	size_t required;
 	size_t new_capacity;
 	int written;
 
-	va_start(args, format);
 	va_copy(args_copy, args);
 	written = vsnprintf(NULL, 0, format, args);
-	va_end(args);
 	if (written < 0 || s_pos > SIZE_MAX - (size_t)written - 1) {
 		va_end(args_copy);
 		return -1;
@@ -2163,6 +2194,29 @@ static int append_summary(const char *format, ...) {
 	s_pos += (size_t)written;
 	return 0;
 }
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
+
+static int append_summary(const char *format, ...) {
+	va_list args;
+	int result;
+
+	va_start(args, format);
+	result = append_summaryv(format, args);
+	va_end(args);
+	return result;
+}
+
+static int append_summary_formatted(const char *format, ...) {
+	va_list args;
+	int result;
+
+	va_start(args, format);
+	result = append_summaryv(format, args);
+	va_end(args);
+	return result;
+}
 
 static void start_summary_file (void) {
 	int row_format_len;
@@ -2186,7 +2240,7 @@ static void start_summary_file (void) {
 		summary[0] = '\0';
 	}
 	if (append_summary("QRQ attempt by %s.\r\n\r\n", mycall) != 0 ||
-			append_summary(summary_hdr_fmt, "Sent call", "Input", "Difference", "CpM",
+		append_summary_formatted(summary_hdr_fmt, "Sent call", "Input", "Difference", "CpM",
 					"WpM", "Score", "F6") != 0) {
 		summary_failed = 1;
 		return;

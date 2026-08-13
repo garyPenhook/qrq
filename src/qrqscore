@@ -1,198 +1,176 @@
-#!/usr/bin/perl 
+#!/usr/bin/perl
 
-# qrqscore - Posts your score and retrieves scores from the an international
-#            internet toplist for 'qrq'.
-#
-# Copyright (C) 2007-2025  Fabian Kurz, DJ5CW
-#
-# This program is free software; you can redistribute it and/or modify it under
-# the terms of the GNU General Public License as published by the Free Software
-# Foundation; either version 2 of the License, or (at your option) any later
-# version.
-#
-# This program is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-# FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-# more details.
-#
-# You should have received a copy of the GNU General Public License along with
-# this program; if not, write to the Free Software Foundation, Inc., 51 Franklin
-# Street, Fifth Floor, Boston, MA  02110-1301, USA.
-
+# qrqscore - synchronize QRQ's local and public score lists.
 
 use strict;
 use warnings;
+use Fcntl qw(:flock);
+use File::Basename qw(dirname);
+use File::Copy qw(copy);
+use File::Temp qw(tempfile);
 use LWP::UserAgent;
 
-my $ua = LWP::UserAgent->new;
-$ua->agent("qrq-score/0.0.2");
-
-my $res;
+my @urls = (
+	'https://fkurz.net/ham/qrqtop.php',
+	'https://dj1yfk.de/ham/qrqtop.php',
+);
+my $download_only = 0;
 my ($qrqrc, $toplist);
-my $mycall='';
-my $noupload=0;
+my $mycall;
 
-my @publictoplist;
-my @mytoplist;
-my @mergelist;
-my @url = ('https://fkurz.net/ham/qrqtop.php', 
-		'https://dj1yfk.de/ham/qrqtop.php');
-
-print "qrq-score (2025-02-19) - toplist synchronizer for morse trainer 'qrq'.";
-print "\n\n";
-print "Populates your local toplist file with the latest scores from other\n"; 
-print "users (https://fkurz.net/ham/qrqtop.php) and uploads your own personal\n";
-print "record to the online toplist.\n\n";
-
-unless (@ARGV) {
-print "Usage:\n";
-print "        qrqscore -u      Updates local toplist and uploads new highscore\n";
-print "                         (if available) for your 'mycall' in 'qrqrc'.\n";
-
-print "        qrqscore -d      Only updates your local toplist from the\n";
-print "                         internet list, doesn't upload your score.\n";
-exit(0);
-}
-elsif ($ARGV[0] eq '-d') {
-	$noupload = 1;
+sub usage {
+	print "Usage: qrqscore -u | -d\n";
+	print "  -u  Download and merge the toplist, then upload your best score.\n";
+	print "  -d  Download and merge the toplist without uploading.\n";
 }
 
-###############################################################################
-# Find the local toplist file and get the highest score for the call in 
-# ~/.qrq/qrqrc
-###############################################################################
-
-if ((-e 'qrqrc') && (-e 'toplist')) {
-	print "Found your 'qrqrc' and 'toplist' files in current directory...\n";
-	$qrqrc = 'qrqrc';
-	$toplist = 'toplist';
-}
-elsif ((-e $ENV{HOME}.'/.qrq/qrqrc') && (-e $ENV{HOME}.'/.qrq/toplist')) {
-	print "Found your 'qrqrc' and 'toplist' files in $ENV{HOME}/.qrq/ ...\n";
-	$qrqrc = $ENV{HOME}.'/.qrq/qrqrc';
-	$toplist = $ENV{HOME}.'/.qrq/toplist';
-}
-else {
-	print "Can't find 'qrqrc' and 'toplist'. Exiting.\n";
-	exit(1);
+sub fatal {
+	my ($message) = @_;
+	print STDERR "qrqscore: $message\n";
+	exit 1;
 }
 
-open RC, $qrqrc;
-while (my $line = <RC>) {
-	if ($line =~ /callsign=(\w+)/) {
-		$mycall = $1;
-		last;
+sub parse_record {
+	my ($line) = @_;
+	my ($call_field, $score_field, $speed_field, $timestamp_field);
+	my $call;
+
+	$line =~ s/\r?\n\z//;
+	return if length($line) != 31;
+	($call_field, $score_field, $speed_field, $timestamp_field) =
+		$line =~ /\A(.{10})( {0,5}\d{1,6}) (\d{3}) (\d{10})\z/;
+	return unless defined $timestamp_field;
+	$call = $call_field;
+	$call =~ s/ +\z//;
+	return unless length($call) != 0 && $call =~ /\A[A-Za-z0-9\/]+\z/;
+	return {
+		call => uc($call),
+		score => 0 + $score_field,
+		raw => sprintf("%-10.10s%6d %3d %10s", uc($call), $score_field,
+			$speed_field, $timestamp_field),
+	};
+}
+
+sub read_records {
+	my ($path) = @_;
+	open my $file, '<', $path or fatal("cannot read $path: $!");
+	my @records;
+	while (my $line = <$file>) {
+		my $record = parse_record($line);
+		fatal("invalid toplist record in $path") unless defined $record;
+		push @records, $record;
 	}
-}
-close RC;
-
-open TL, $toplist;
-	@mytoplist = <TL>;
-close TL;
-
-open TL, ">$toplist-old";
-	print TL @mytoplist;
-close TL;
-
-chomp(@mytoplist);
-
-print "Old toplist backed up as $toplist-old.\n";
-
-###############################################################################
-# Merging the internet toplist with yours. Remove double entries for calls from
-# the toplist that are not $mycall, take the better score.
-###############################################################################
-
-my $x=0;
-do {
-	$res = $ua->post($url[$x], ['mode' => 'plain']);
-	$x++;
-} while (!$res->is_success);
-
-if ($res->is_success) {
-	print "Downloaded list from $url[$x-1]...\n";
-	@publictoplist = split(/\n/, $res->content);
-}
-else {
-	die "Unable to reach any of the servers. $res->status_line\n";
+	close $file or fatal("cannot close $path: $!");
+	return @records;
 }
 
-@mergelist = (@publictoplist, @mytoplist);
-
-@mytoplist = ();
-
-# Find the top score for every callsign in the List. Might be higher locally
-# than on the internet list, or vice versa...
-
-my %topscores;						# key=call, value=topscore
-foreach (@mergelist) {
-	next unless($_ =~ /^(\w+)\s+(\d+)/);
-	if (defined($topscores{$1})) {
-		if ($topscores{$1} <= $2) {
-			$topscores{$1} = $2;
+sub read_callsign {
+	my ($path) = @_;
+	open my $file, '<', $path or fatal("cannot read $path: $!");
+	while (my $line = <$file>) {
+		if ($line =~ /^\s*callsign\s*=\s*([A-Za-z0-9\/]+)(?:\s|#|\z)/) {
+			close $file or fatal("cannot close $path: $!");
+			return uc($1);
 		}
 	}
-	else {
-		$topscores{$1} = $2;
+	close $file or fatal("cannot close $path: $!");
+	fatal("no valid callsign found in $path");
+}
+
+sub download_records {
+	my $ua = LWP::UserAgent->new(timeout => 15);
+	$ua->agent('qrq-score/0.3.6');
+	for my $url (@urls) {
+		my $response = $ua->post($url, [mode => 'plain']);
+		next unless $response->is_success;
+		my @records;
+		my $valid = 1;
+		for my $line (split /\n/, $response->decoded_content) {
+			my $record = parse_record($line);
+			if (!defined $record) {
+				$valid = 0;
+				last;
+			}
+			push @records, $record;
+		}
+		return ($url, @records) if $valid && @records;
+	}
+	fatal('could not download a valid toplist from any configured server');
+}
+
+sub merged_records {
+	my (@records) = @_;
+	my (%best, %own_seen);
+	my @own;
+
+	for my $record (@records) {
+		if ($record->{call} eq $mycall) {
+			next if $own_seen{$record->{raw}}++;
+			push @own, $record;
+			next;
+		}
+		if (!exists $best{$record->{call}} ||
+				$record->{score} > $best{$record->{call}}->{score}) {
+			$best{$record->{call}} = $record;
+		}
+	}
+	return sort {
+		$b->{score} <=> $a->{score} || $a->{raw} cmp $b->{raw}
+	} (@own, values %best);
+}
+
+sub write_records_atomic {
+	my ($path, @records) = @_;
+	my ($file, $temporary) = tempfile('.qrqscore.XXXXXX', DIR => dirname($path),
+		UNLINK => 0);
+	for my $record (@records) {
+		print {$file} $record->{raw}, "\n" or fatal("cannot write $temporary: $!");
+	}
+	close $file or fatal("cannot close $temporary: $!");
+	rename $temporary, $path or fatal("cannot replace $path: $!");
+}
+
+if (@ARGV != 1 || ($ARGV[0] ne '-u' && $ARGV[0] ne '-d')) {
+	usage();
+	exit(@ARGV == 0 ? 0 : 1);
+}
+$download_only = $ARGV[0] eq '-d';
+
+if (-e 'qrqrc' && -e 'toplist') {
+	$qrqrc = 'qrqrc';
+	$toplist = 'toplist';
+} elsif (defined $ENV{HOME} && -e "$ENV{HOME}/.qrq/qrqrc" &&
+		-e "$ENV{HOME}/.qrq/toplist") {
+	$qrqrc = "$ENV{HOME}/.qrq/qrqrc";
+	$toplist = "$ENV{HOME}/.qrq/toplist";
+} else {
+	fatal("cannot find qrqrc and toplist in the current directory or ~/.qrq");
+}
+
+$mycall = read_callsign($qrqrc);
+open my $lock, '>>', "$toplist.lock" or fatal("cannot open toplist lock: $!");
+flock($lock, LOCK_EX) or fatal("cannot lock toplist: $!");
+my @local = read_records($toplist);
+my ($server, @public) = download_records();
+my @merged = merged_records(@local, @public);
+my $backup = "$toplist-old";
+if (-e $backup) {
+	$backup .= '-' . time . '-' . $$;
+}
+copy($toplist, $backup) or fatal("cannot back up $toplist to $backup: $!");
+write_records_atomic($toplist, @merged);
+print "Downloaded and merged toplist from $server. Backup: $backup\n";
+
+if (!$download_only) {
+	my ($record) = grep { $_->{call} eq $mycall } @merged;
+	if (defined $record) {
+		my $ua = LWP::UserAgent->new(timeout => 15);
+		$ua->agent('qrq-score/0.3.6');
+		my $response = $ua->post($server, [mode => 'update', line => $record->{raw}]);
+		fatal('failed to upload score: ' . $response->status_line)
+			unless $response->is_success;
+		print "Uploaded score for $mycall.\n";
+	} else {
+		print "No score for $mycall to upload.\n";
 	}
 }
-
-# Generate a new local toplist with all results of $mycall and the best scores
-# from each other callsign. Remove dupes.
-
-my $tmp='';
-foreach (@mergelist) {
-	next unless ($_ =~ /^(\w+)\s+(\d+)/);
-	next if (index($tmp, $_) > -1);						# dupe 
-	if (($2 == $topscores{$1}) || ($1 eq $mycall))  {
-		$topscores{$1} = 0;
-		push @mytoplist, $_;
-		$tmp .= $_;
-	}
-}
-
-# Sort list by score
-
-@mytoplist = sort { 
-		(split(/\s+/, $b))[1] <=> (split(/\s+/, $a))[1] 
-} @mytoplist;
-
-
-# Write to $toplist and create backup.
-
-@mytoplist = map "$_\n", @mytoplist;		# unchomp
-
-open TL, ">$toplist";
-print TL @mytoplist;
-close TL;
-
-print "Wrote new toplist to '$toplist'.\n\n";
-
-if ($noupload) { print "Done.\n"; exit(0);}
-
-# Upload own record...
-
-open TL, $toplist;
-	@mytoplist = <TL>;
-close TL;
-
-my $line;
-foreach  (@mytoplist) {
-	if ($_ =~ /$mycall/) {
-		$line = $_;
-		last;
-	}
-}
-
-print "Now uploading your personal record...\n";
-
-$res = $ua->post($url[$x-1], ['mode' => 'update',
-			'line' => $line]);
-
-unless ($res->is_success) {
-	print "Failed to post score...\n";
-}
-
-print "Server response: ".$res->content."\n";
-
-print "Done.\n"; 

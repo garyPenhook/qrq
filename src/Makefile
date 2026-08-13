@@ -11,6 +11,9 @@ USE_CA=NO
 # set to YES if you want to use PulseAudio instead of OSS
 USE_PA=YES
 
+# set to YES for terminal integration tests without an audio server/device
+USE_MOCK_AUDIO=NO
+
 # set to YES if you compile with MINGW32
 USE_WIN32=NO
 
@@ -38,7 +41,10 @@ WIN32_CURSES_LIBS ?= -lpdcurses
 
 INSTALL ?= install
 PKG_CONFIG ?= pkg-config
-TEST_CFLAGS ?= -std=c17 -Wall -Wextra -Wpedantic -Werror
+C_STANDARD ?= -std=c17
+WARNING_CFLAGS ?= -Wall -Wextra -Wpedantic -Wformat=2 -Wstrict-prototypes
+DEPENDENCY_CFLAGS ?= -MMD -MP
+TEST_CFLAGS ?= $(C_STANDARD) $(WARNING_CFLAGS) -Werror
 WINDRES ?= windres
 
 NCURSES_CFLAGS := $(shell $(PKG_CONFIG) --cflags ncurses 2>/dev/null)
@@ -58,13 +64,14 @@ endif
 
 BUILD_INFO=" Date: $(shell if [ -r ../ChangeLog ]; then date -r ../ChangeLog +%Y-%m-%dT%H:%M:%S%z; else date -r ChangeLog +%Y-%m-%dT%H:%M:%S%z; fi)\n git branch/commit: $(shell if [ x${CI_COMMIT_REF_NAME} != x ]; then echo ${CI_COMMIT_REF_NAME} ; elif [ -e .git ] || [ -e ../.git ]; then git symbolic-ref --short HEAD ; else echo not built from git repository ; fi) / $(shell if [ x${CI_COMMIT_SHA} != x ]; then echo ${CI_COMMIT_SHA}; elif [ -e .git ] || [ -e ../.git ] ; then git rev-parse --verify HEAD ; else echo - ; fi )\n by $(USER)@$(shell hostname -f)\n OS: $(shell uname -s -r -p)\n Compiler: $(shell $(CC) --version | head -1)"
 
-# Keep backend definitions when callers add warning, sanitizer, or packaging flags.
-override CFLAGS += -D PREFIX=\"$(PREFIX)\" -D BUILD_INFO=\"$(BUILD_INFO)\" -D VERSION=\"$(VERSION)\" -I.
+# Keep language, warning, dependency, and backend definitions when callers add
+# optimization, sanitizer, or packaging flags.
+override CFLAGS += $(C_STANDARD) $(WARNING_CFLAGS) $(DEPENDENCY_CFLAGS) -D PREFIX=\"$(PREFIX)\" -D BUILD_INFO=\"$(BUILD_INFO)\" -D VERSION=\"$(VERSION)\" -I.
 
 ifeq ($(USE_CA), YES)
 		CC=clang
 		OBJECTS=qrq.o score.o callbase.o practice.o history.o confusion.o item_history.o audio_effects.o config.o coreaudio.o
-		override CFLAGS += -D CA -std=c99 -pthread
+		override CFLAGS += -D CA -pthread
 		ifeq ($(OSX_PLATFORM), YES)
 		override LDFLAGS += -framework AudioUnit -framework CoreServices  -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=10.5 -lcurses
 			override CFLAGS += -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk -mmacosx-version-min=10.5
@@ -79,6 +86,10 @@ ifeq ($(USE_CA), YES)
 			SCP=scp -P2222
 			SSH=ssh -p2222
 		endif
+else ifeq ($(USE_MOCK_AUDIO), YES)
+		override CFLAGS += -D MOCK_AUDIO -pthread $(NCURSES_CFLAGS)
+		override LDFLAGS += -lpthread $(NCURSES_LIBS)
+		OBJECTS=qrq.o score.o callbase.o practice.o history.o confusion.o item_history.o audio_effects.o config.o mockaudio.o
 else ifeq ($(USE_PA), YES)
 		override CFLAGS += -D PA -pthread $(NCURSES_CFLAGS) $(PULSE_CFLAGS)
 		override LDFLAGS += -lpthread $(PULSE_LIBS) $(NCURSES_LIBS)
@@ -95,11 +106,14 @@ endif
 
 all: qrq
 
+DEPS = $(OBJECTS:.o=.d)
+-include $(DEPS)
+
 qrq: $(OBJECTS)
-	$(CC) -Wall -o $@ $^ -lm $(LDFLAGS)
+	$(CC) -o $@ $^ -lm $(LDFLAGS)
 	
 .c.o:
-	$(CC) -Wall $(CPPFLAGS) $(CFLAGS) -c $<
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $<
 
 qrq-resource.o: qrq.rc qrq.ico
 	$(WINDRES) -i qrq.rc -O coff -o $@
@@ -136,10 +150,14 @@ else
 install: qrq
 	${INSTALL} -d -v                      $(DESTDIR)$(PREFIX)/share/qrq/
 	${INSTALL} -d -v                      $(DESTDIR)$(PREFIX)/share/man/man1/
+	${INSTALL} -d -v                      $(DESTDIR)$(PREFIX)/share/applications/
+	${INSTALL} -d -v                      $(DESTDIR)$(PREFIX)/share/icons/hicolor/48x48/apps/
 	${INSTALL} -d -v                      $(DESTDIR)$(PREFIX)/bin/
 	${INSTALL} -s -m 0755 qrq             $(DESTDIR)$(PREFIX)/bin/
 	${INSTALL}    -m 0755 qrqscore        $(DESTDIR)$(PREFIX)/bin/
 	${INSTALL}    -m 0644 qrq.1           $(DESTDIR)$(PREFIX)/share/man/man1/
+	${INSTALL}    -m 0644 qrq.desktop      $(DESTDIR)$(PREFIX)/share/applications/qrq.desktop
+	${INSTALL}    -m 0644 qrq.png          $(DESTDIR)$(PREFIX)/share/icons/hicolor/48x48/apps/qrq.png
 	${INSTALL}    -m 0644 callbase.qcb    $(DESTDIR)$(PREFIX)/share/qrq/
 	${INSTALL}    -m 0644 english.qcb     $(DESTDIR)$(PREFIX)/share/qrq/
 	${INSTALL}    -m 0644 cwops.qcb       $(DESTDIR)$(PREFIX)/share/qrq/
@@ -149,16 +167,18 @@ install: qrq
 
 	
 uninstall:
-	rm -f $(PREFIX)/bin/qrq
-	rm -f $(PREFIX)/bin/qrqscore
-	rm -f $(PREFIX)/share/man/man1/qrq.1
-	rm -f $(PREFIX)/share/qrq/callbase.qcb
-	rm -f $(PREFIX)/share/qrq/english.qcb
-	rm -f $(PREFIX)/share/qrq/cwops.qcb
-	rm -f $(PREFIX)/share/qrq/morserunner.qcb
-	rm -f $(PREFIX)/share/qrq/qrqrc
-	rm -f $(PREFIX)/share/qrq/toplist
-	rmdir $(PREFIX)/share/qrq/
+	rm -f $(DESTDIR)$(PREFIX)/bin/qrq
+	rm -f $(DESTDIR)$(PREFIX)/bin/qrqscore
+	rm -f $(DESTDIR)$(PREFIX)/share/man/man1/qrq.1
+	rm -f $(DESTDIR)$(PREFIX)/share/applications/qrq.desktop
+	rm -f $(DESTDIR)$(PREFIX)/share/icons/hicolor/48x48/apps/qrq.png
+	rm -f $(DESTDIR)$(PREFIX)/share/qrq/callbase.qcb
+	rm -f $(DESTDIR)$(PREFIX)/share/qrq/english.qcb
+	rm -f $(DESTDIR)$(PREFIX)/share/qrq/cwops.qcb
+	rm -f $(DESTDIR)$(PREFIX)/share/qrq/morserunner.qcb
+	rm -f $(DESTDIR)$(PREFIX)/share/qrq/qrqrc
+	rm -f $(DESTDIR)$(PREFIX)/share/qrq/toplist
+	rmdir $(DESTDIR)$(PREFIX)/share/qrq/
 
 endif
 
@@ -184,7 +204,7 @@ package: qrq
 	$(SSH) $(IPHONE_HOST) "dpkg -i /tmp/cydiastore_com.kb1ooo.qrq_v$(shell grep ^Version: control | cut -d ' ' -f 2).deb"
 
 clean:
-	rm -f qrq.exe qrq test_score test_callbase test_practice test_history test_confusion test_item_history test_audio_effects test_config test_callbase.qcb test_history.csv test_confusion.csv test_item_history.csv toplist-old *~ *.o
+	rm -f qrq.exe qrq test_score test_callbase test_practice test_history test_confusion test_item_history test_audio_effects test_config test_callbase.qcb test_history.csv test_confusion.csv test_item_history.csv toplist-old *~ *.o *.d
 	rm -rf Summary
 	rm -rf qrq.app
 
@@ -224,6 +244,12 @@ check: test_score test_callbase test_practice test_history test_confusion test_i
 
 test: check
 
+ui-smoke: qrq
+	TERM=xterm tests/test_ui_smoke.sh ./qrq
+	TERM=xterm tests/test_ui_sustained_goal.sh ./qrq
+	TERM=xterm tests/test_ui_serials.sh ./qrq
+	TERM=xterm tests/test_ui_custom_drill.sh ./qrq
+
 print-version:
 	@printf '%s\n' '$(VERSION)'
 
@@ -233,11 +259,11 @@ dist:
 	rm -f ../releases/qrq-$(VERSION).tar.gz
 	rm -rf ../releases/qrq-$(VERSION)
 	mkdir qrq-$(VERSION)
-	cp qrq.png qrqscore qrq.c score.c score.h callbase.c callbase.h practice.c practice.h history.c history.h confusion.c confusion.h item_history.c item_history.h audio_effects.c audio_effects.h config.c config.h qrqrc callbase.qcb toplist \
+	cp qrq.png qrq.desktop qrqscore qrq.c score.c score.h callbase.c callbase.h practice.c practice.h history.c history.h confusion.c confusion.h item_history.c item_history.h audio_effects.c audio_effects.h config.c config.h qrqrc callbase.qcb toplist \
 		../AUTHORS ../ChangeLog README ../COPYING qrq.1 Makefile qrqinstaller.nsi \
 		english.qcb cwops.qcb morserunner.qcb MORSE_RUNNER_CALLS.md qrq.ico qrq.rc \
 		qrq-$(VERSION)
-	cp coreaudio.c coreaudio.h oss.c oss.h \
+	cp coreaudio.c coreaudio.h oss.c oss.h mockaudio.c mockaudio.h \
 		qrq-$(VERSION)
 	cp pulseaudio.h pulseaudio.c qrq-$(VERSION)
 	cp -r ../docs qrq-$(VERSION)

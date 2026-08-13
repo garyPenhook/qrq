@@ -63,6 +63,17 @@ See separate file "INSTALL"
 
 Run `qrq --version` to print the installed version in the console.
 
+For a hardware-independent developer check, build the mock audio backend and
+run the ncurses smoke suite from `src`:
+
+```sh
+make USE_MOCK_AUDIO=YES ui-smoke
+```
+
+This requires `expect` and exercises startup, serial and custom-item sessions,
+sustained-goal continuation, summaries, and clean shutdown without producing
+audio.
+
 -----------------------------------------------------------------------------
 How to use it
 

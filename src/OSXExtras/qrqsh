@@ -1,6 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-localdir=`echo $0 | sed 's/\(.*\)\/.*/\1/'`
+set -Eeuo pipefail
 
-/usr/bin/open ${localdir}/qrq
-
+localdir=$(dirname -- "$0")
+exec /usr/bin/open "$localdir/qrq"
