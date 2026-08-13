@@ -228,7 +228,7 @@ print-version:
 	@printf '%s\n' '$(VERSION)'
 
 dist:
-	sed 's/Version [0-9].[0-9].[0-9]/Version $(VERSION)/g' ../README > README
+	sed 's/Version [0-9].[0-9].[0-9]/Version $(VERSION)/g' ../README.md > README
 	mkdir -p ../releases
 	rm -f ../releases/qrq-$(VERSION).tar.gz
 	rm -rf ../releases/qrq-$(VERSION)
