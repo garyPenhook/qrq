@@ -54,14 +54,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes build-essential cppcheck libncurses-dev libpulse-dev
 
-      - name: Strict C17 syntax check
+      - name: Strict C23 syntax check
         run: |
           version="$(make -s -C src print-version)"
-          cc -std=c17 -D_POSIX_C_SOURCE=200809L -DOSS \
+          cc -std=c23 -D_POSIX_C_SOURCE=200809L -DOSS \
             '-DPREFIX="/usr"' -DVERSION=\"${version}\" -I src \
             -Wall -Wextra -Wpedantic -Wformat=2 -Wstrict-prototypes -Werror \
             -fsyntax-only src/qrq.c src/score.c src/callbase.c src/practice.c src/history.c src/config.c src/oss.c
-          cc -std=c17 -D_POSIX_C_SOURCE=200809L -DPA \
+          cc -std=c23 -D_POSIX_C_SOURCE=200809L -DPA \
             '-DPREFIX="/usr"' -DVERSION=\"${version}\" -I src \
             $(pkg-config --cflags libpulse-simple ncurses) \
             -Wall -Wextra -Wpedantic -Wformat=2 -Wstrict-prototypes -Werror \
@@ -72,7 +72,9 @@ jobs:
 
       - name: Run cppcheck
         run: |
-          cppcheck --enable=warning,performance,portability --std=c99 \
+          # Cppcheck 2.x supports C11 but not C23; the compiler checks above
+          # enforce the project's C23 requirement.
+          cppcheck --enable=warning,performance,portability --std=c11 \
             --platform=unix64 --suppress=missingIncludeSystem --quiet \
             src/qrq.c src/score.c src/callbase.c src/practice.c src/history.c src/config.c src/oss.c src/pulseaudio.c
 

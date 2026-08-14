@@ -41,7 +41,7 @@ WIN32_CURSES_LIBS ?= -lpdcurses
 
 INSTALL ?= install
 PKG_CONFIG ?= pkg-config
-C_STANDARD ?= -std=c17
+C_STANDARD ?= -std=c23
 WARNING_CFLAGS ?= -Wall -Wextra -Wpedantic -Wformat=2 -Wstrict-prototypes
 DEPENDENCY_CFLAGS ?= -MMD -MP
 TEST_CFLAGS ?= $(C_STANDARD) $(WARNING_CFLAGS) -Werror

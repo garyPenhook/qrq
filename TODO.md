@@ -46,11 +46,11 @@ make -C src USE_PA=NO clean all
 make -C src USE_PA=NO clean
 ```
 
-A strict C17 syntax check completes without errors after the PI fix, although
+A strict C23 syntax check completes without errors after the PI fix, although
 it reports inherited warnings:
 
 ```sh
-cc -std=c17 -D_POSIX_C_SOURCE=200809L -DOSS \
+cc -std=c23 -D_POSIX_C_SOURCE=200809L -DOSS \
   '-DDESTDIR="/usr"' '-DVERSION="0.3.5"' -I src \
   -Wall -Wextra -Wpedantic -Wformat=2 -Wstrict-prototypes \
   -Wmissing-prototypes -Werror=implicit-function-declaration \
@@ -124,7 +124,7 @@ The OSS and PulseAudio backends both build locally.
 13. Future product features—advanced
    audio, and terminal UX—are tracked in `ROADMAP.md` and need a product-level
    design decision before implementation.
-9. [x] Add a warning-free strict C17 syntax gate with `-Werror`.
+9. [x] Add a warning-free strict C23 syntax gate with `-Werror`.
 
 ## Follow-up from the 2026-08-13 operational and code review
 

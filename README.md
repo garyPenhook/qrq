@@ -1,7 +1,7 @@
 QRQ - yet another CW trainer - Version 0.3.8
 
 [![Build, test, and portability](https://github.com/garyPenhook/qrq/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/garyPenhook/qrq/actions/workflows/ci.yml)
-[![C17](https://img.shields.io/badge/C-C17-00599C?logo=c&logoColor=white)](.github/workflows/ci.yml)
+[![C23](https://img.shields.io/badge/C-C23-00599C?logo=c&logoColor=white)](.github/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)](COPYING)
 
 Project website: https://fkurz.net/ham/qrq.html
@@ -58,6 +58,10 @@ are current. Raise difficulty only after accurate sessions.
 -----------------------------------------------------------------------------
 
 COMPILE / INSTALL
+
+QRQ is built as ISO C23 and requires a C23-capable C compiler. It uses only
+widely available C and platform APIs; no optional C23 library feature is
+required.
 
 See separate file "INSTALL"
 

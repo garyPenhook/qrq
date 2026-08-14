@@ -29,7 +29,7 @@ practice.
 
 - [x] Add GCC and Clang builds plus focused cppcheck analysis in GitHub Actions.
 - [x] Add ASan/UBSan build and command-line smoke-test coverage.
-- [x] Add a warning-free strict C17 syntax check.
+- [x] Add a warning-free strict C23 syntax check.
 - [x] Detect ncurses and audio dependencies with `pkg-config`, retaining
   linker fallbacks for older environments.
 - [x] Add Linux, macOS, and MinGW CI.
