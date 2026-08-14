@@ -1,4 +1,4 @@
-QRQ - yet another CW trainer - Version 0.3.7 (development)
+QRQ - yet another CW trainer - Version 0.3.7
 
 [![Build, test, and portability](https://github.com/garyPenhook/qrq/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/garyPenhook/qrq/actions/workflows/ci.yml)
 [![C17](https://img.shields.io/badge/C-C17-00599C?logo=c&logoColor=white)](.github/workflows/ci.yml)
@@ -63,21 +63,21 @@ See separate file "INSTALL"
 
 ## Prebuilt downloads
 
-The current prebuilt release is **0.3.6**. Version 0.3.7 adds local scoring
-for training-only sessions while keeping those sessions out of the toplist:
+The current prebuilt release is **0.3.7**. Training-only sessions retain local
+scores while remaining excluded from the toplist:
 
-- **Linux x86_64 AppImage:** [qrq-0.3.6-linux-x86_64.AppImage](https://github.com/garyPenhook/qrq/releases/download/v0.3.6/qrq-0.3.6-linux-x86_64.AppImage).
+- **Linux x86_64 AppImage:** [qrq-0.3.7-linux-x86_64.AppImage](https://github.com/garyPenhook/qrq/releases/download/v0.3.7/qrq-0.3.7-linux-x86_64.AppImage).
   Make it executable and run it; it bundles the required application runtime
   libraries and stores mutable QRQ data in `XDG_DATA_HOME/qrq` (normally
   `~/.local/share/qrq`).
-- **Linux x86_64 tarball:** [qrq-0.3.6-linux-x86_64.tar.gz](https://github.com/garyPenhook/qrq/releases/download/v0.3.6/qrq-0.3.6-linux-x86_64.tar.gz).
+- **Linux x86_64 tarball:** [qrq-0.3.7-linux-x86_64.tar.gz](https://github.com/garyPenhook/qrq/releases/download/v0.3.7/qrq-0.3.7-linux-x86_64.tar.gz).
   Extract it and run `./qrq` from the extracted directory. It requires a
   compatible x86_64 Linux system with the ncurses and PulseAudio runtime
   libraries.
-- **Windows x86_64:** [qrq-0.3.6-windows-x86_64-setup.exe](https://github.com/garyPenhook/qrq/releases/download/v0.3.6/qrq-0.3.6-windows-x86_64-setup.exe).
+- **Windows x86_64:** [qrq-0.3.7-windows-x86_64-setup.exe](https://github.com/garyPenhook/qrq/releases/download/v0.3.7/qrq-0.3.7-windows-x86_64-setup.exe).
   The installer targets 64-bit Windows, including Windows 11. It is currently
   unsigned, so Windows may display an unknown-publisher warning.
-- Verify either download with [SHA256SUMS](https://github.com/garyPenhook/qrq/releases/download/v0.3.6/SHA256SUMS).
+- Verify either download with [SHA256SUMS](https://github.com/garyPenhook/qrq/releases/download/v0.3.7/SHA256SUMS).
 
 Run `qrq --version` to print the installed version in the console.
 
