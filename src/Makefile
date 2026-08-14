@@ -1,6 +1,6 @@
 # qrq Makefile -- Fabian Kurz, DJ5CW -- https://fkurz.net/ham/qrq.html
 
-VERSION?=0.3.6
+VERSION?=0.3.7
 PREFIX?=/usr
 DESTDIR?=
 

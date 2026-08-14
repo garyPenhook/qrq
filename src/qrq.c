@@ -210,7 +210,7 @@ static int accuracytarget=0;
 static int goalspeed=0;
 static int goalduration=0;
 static unsigned int sessionseed=0;
-static int attemptvalid=1;				/* 1 = not using any "cheats" */
+static int toplisteligible=1;				/* 1 = current options permit toplist entry */
 static size_t nrofcalls=0;
 static int toplist_own=0;               /* show only own call on toplist */
 static int call_maxlen = 0;				/* maximum length of a callsign/word from current database */
@@ -580,9 +580,9 @@ int main (int argc, char *argv[]) {
 	printw("\nReading configuration file qrqrc \n");
 	read_config();
 
-	attemptvalid = 1;
+	toplisteligible = 1;
 	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses || focusconfusions || spacedrepetition || answerbatch != 1 || serialdigits != 0 || portablevariants || practiceitems[0] != '\0' || pileuplevel != 0 || sessionseed != 0 || qrq_practice_sustained_goal_active(goalspeed, goalduration)) {
-		attemptvalid = 0;	
+		toplisteligible = 0;
 	}
 
 	/****** Reading callsign database ******/
@@ -1008,7 +1008,7 @@ while (status == 1) {
 			qrq_practice_sustained_goal_met(sessiongoalspeed, sessiongoalduration,
 					sustainedgoalelapsed_ms, sustainedgoalspeedviolated);
 	attemptaccuracy = qrq_practice_accuracy((size_t)completedcalls, (size_t)errornr);
-	sessioneligible = qrq_practice_session_eligible(attemptvalid,
+	sessioneligible = qrq_practice_session_eligible(toplisteligible,
 			(size_t)completedcalls, (size_t)sessionlength, attemptaccuracy,
 			accuracytarget);
 	toplist_score = sessioneligible ? score : 0;
@@ -1694,10 +1694,10 @@ while ((j = getch()) != 0) {
 	/* Once a running session uses a non-comparable option, changing the
 	 * option back must not make that session eligible again. */
 	if (!callnr) {
-		attemptvalid = 1;
+		toplisteligible = 1;
 	}
 	if (f6 || fixspeed || unlimitedattempt || sessionlength != 50 || adaptiveselection || reviewmisses || focusconfusions || spacedrepetition || answerbatch != 1 || serialdigits != 0 || portablevariants || practiceitems[0] != '\0' || pileuplevel != 0 || sessionseed != 0 || qrq_practice_sustained_goal_active(goalspeed, goalduration)) {
-		attemptvalid = 0;	
+		toplisteligible = 0;
 	}
 
 	update_parameter_dialog();
@@ -2013,14 +2013,14 @@ static int readline(WINDOW *win, int y, int x, char *line, int capitals,
 				mvwaddstr(win,1,55,"INS");
 			}
 		}
-		else if (c == KEY_PPAGE && callnr && !attemptvalid) {
+		else if (c == KEY_PPAGE && callnr && !toplisteligible) {
 			if (speed <= QRQ_SPEED_MAX - 5) {
 				speed += 5;
 			}
 			update_score();
 			wrefresh(top_w);
 		}
-		else if (c == KEY_NPAGE && callnr && !attemptvalid) {
+		else if (c == KEY_NPAGE && callnr && !toplisteligible) {
 			if (speed > 20) {
 				speed = speed >= 25 ? speed - 5 : 20;
 			}
@@ -2124,7 +2124,7 @@ static int display_toplist (void) {
  * writes the correct call and entered call with highlighted errors to *output
  * and returns the score for this call
  *
- * in training modes (unlimited attempts, f6, fixed speed), no points.
+ * Training-only settings affect toplist eligibility, not local scoring.
  * */
 static int calc_score (char * realcall, char * input, int spd, char * output, int f6pressed) {
 	struct qrq_score_state state = {
@@ -2132,7 +2132,6 @@ static int calc_score (char * realcall, char * input, int spd, char * output, in
 		.maxspeed = maxspeed,
 		.error_count = errornr,
 		.fixed_speed = fixspeed,
-		.attempt_valid = attemptvalid,
 		.speed_up_step = speedupstep,
 		.speed_down_step = speeddownstep,
 	};
@@ -2347,37 +2346,9 @@ static void close_summary_file (void) {
 static int update_score(void) {
 	mvwaddstr(top_w,1,20, "Score:                         ");
 	mvwaddstr(top_w,2,1, "                                                          ");
-	if (attemptvalid) {
-		mvwprintw(top_w, 1, 27, "%6d", score);	
-	}
-	else if (pileuplevel != 0) {
-		mvwprintw(top_w, 1, 27, "[pileup: %d%%]", pileuplevel);
-	}
-	else if (focusconfusions_active) {
-		mvwprintw(top_w, 1, 27, "[focus drills]");
-	}
-	else if (practiceitems[0] != '\0') {
-		mvwprintw(top_w, 1, 27, "[custom: %zu items]", nrofcalls);
-	}
-	else if (answerbatch > 1) {
-		mvwprintw(top_w, 1, 27, "[batch copy: %d]", answerbatch);
-	}
-	else if (qrq_practice_sustained_goal_active(goalspeed, goalduration)) {
-		mvwprintw(top_w, 1, 27, "[sustain: %d/%ds]", goalspeed,
-				goalduration);
-	}
-	else if (serialdigits != 0) {
-		mvwprintw(top_w, 1, 27, "[serials: %d digits]", serialdigits);
-	}
-	else if (spacedrepetition) {
-		if (spaced_due_count != 0) {
-			mvwprintw(top_w, 1, 27, "[spaced: %zu due]", spaced_due_count);
-		} else {
-			mvwprintw(top_w, 1, 27, "[spaced review]");
-		}
-	}
-	else {
-		mvwprintw(top_w, 1, 27, "[training mode]");	
+	mvwprintw(top_w, 1, 27, "%6d", score);
+	if (!toplisteligible) {
+		mvwaddstr(top_w, 1, 34, " [training]");
 	}
 	mvwprintw(top_w, 2, 1, "Overall:%3d CpM/%3d WpM  Char:%3d CpM  Max:%3d CpM",
 			speed, speed/5, speed < mincharspeed ? mincharspeed : speed, maxspeed);

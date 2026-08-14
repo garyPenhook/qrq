@@ -77,9 +77,7 @@ int qrq_score_attempt(struct qrq_score_state *state, const char *sent,
 				state->speed = QRQ_SPEED_MAX;
 			}
 		}
-		if (state->attempt_valid) {
-			score = bounded_score(sent_length, transmitted_speed, 1);
-		}
+		score = bounded_score(sent_length, transmitted_speed, 1);
 		return score;
 	}
 
@@ -103,7 +101,7 @@ int qrq_score_attempt(struct qrq_score_state *state, const char *sent,
 			state->speed = 20;
 		}
 	}
-	if (mistakes > 0 && mistakes < 4 && state->attempt_valid) {
+	if (mistakes > 0 && mistakes < 4) {
 		score = bounded_score(display_length, transmitted_speed, 5 * mistakes);
 	}
 	return score;

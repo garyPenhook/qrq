@@ -30,7 +30,7 @@ expect {
 after 100
 send "\r"
 expect {
-  "serials: 3 digits" {}
+  -re {\[training\]} {}
   timeout { exit 1 }
   eof { exit 1 }
 }

@@ -1,3 +1,7 @@
+0.3.7 / 2026-08-14   W4GNS
+	* Keep local scores visible and recorded for training-only sessions,
+	  while preserving their exclusion from the toplist.
+
 0.3.6 / 2023-??-??   Fabian Kurz <fabian@fkurz.net>
 	* Configurable speed step after each call (tnx DF7CB)
 	* Option to stop after an error for review (tnx K7MOZ, EI6LA)
