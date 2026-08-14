@@ -29,10 +29,16 @@ jobs:
       - name: Build
         run: |
           make -C src clean
+          # Ubuntu 24.04's GCC 13 exposes its C23 mode as -std=c2x.
+          # Clang uses the final -std=c23 spelling below and in the matrix.
+          c_standard=-std=c23
+          if [ "${{ matrix.compiler }}" = gcc ]; then
+            c_standard=-std=c2x
+          fi
           if [ "${{ matrix.audio }}" = oss ]; then
-            make -C src USE_PA=NO CC=${{ matrix.compiler }} all
+            make -C src USE_PA=NO CC=${{ matrix.compiler }} C_STANDARD="$c_standard" all
           else
-            make -C src USE_PA=YES CC=${{ matrix.compiler }} all
+            make -C src USE_PA=YES CC=${{ matrix.compiler }} C_STANDARD="$c_standard" all
           fi
 
       - name: Upload executable
@@ -52,23 +58,23 @@ jobs:
       - name: Install static-analysis dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes build-essential cppcheck libncurses-dev libpulse-dev
+          sudo apt-get install --yes build-essential clang cppcheck libncurses-dev libpulse-dev
 
       - name: Strict C23 syntax check
         run: |
           version="$(make -s -C src print-version)"
-          cc -std=c23 -D_POSIX_C_SOURCE=200809L -DOSS \
+          clang -std=c23 -D_POSIX_C_SOURCE=200809L -DOSS \
             '-DPREFIX="/usr"' -DVERSION=\"${version}\" -I src \
             -Wall -Wextra -Wpedantic -Wformat=2 -Wstrict-prototypes -Werror \
             -fsyntax-only src/qrq.c src/score.c src/callbase.c src/practice.c src/history.c src/config.c src/oss.c
-          cc -std=c23 -D_POSIX_C_SOURCE=200809L -DPA \
+          clang -std=c23 -D_POSIX_C_SOURCE=200809L -DPA \
             '-DPREFIX="/usr"' -DVERSION=\"${version}\" -I src \
             $(pkg-config --cflags libpulse-simple ncurses) \
             -Wall -Wextra -Wpedantic -Wformat=2 -Wstrict-prototypes -Werror \
             -fsyntax-only src/qrq.c src/score.c src/callbase.c src/practice.c src/history.c src/config.c src/pulseaudio.c
 
       - name: Run core unit tests
-        run: make -C src USE_PA=NO check
+        run: make -C src USE_PA=NO CC=clang check
 
       - name: Run cppcheck
         run: |
