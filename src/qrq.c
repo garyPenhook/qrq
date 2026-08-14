@@ -259,7 +259,9 @@ static void start_morse_thread(const char *text);
 static void wait_morse_thread(void);
 static int check_toplist (void);
 static int find_files (void);
+#ifndef WIN32
 static int statistics (void);
+#endif
 static size_t read_callbase(void);
 static void find_callbases(void);
 static void select_callbase (void);
@@ -3900,6 +3902,7 @@ static int find_files (void) {
 }
 
 
+#ifndef WIN32
 static int statistics (void) {
 		struct qrq_history_summary summary;
 		struct qrq_confusion_summary confusion_summary;
@@ -4083,6 +4086,7 @@ static int statistics (void) {
 #endif
 	return 0;
 }
+#endif
 
 
 static void free_calls(void) {

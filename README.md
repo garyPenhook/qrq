@@ -61,6 +61,19 @@ COMPILE / INSTALL
 
 See separate file "INSTALL"
 
+## Prebuilt downloads
+
+The current prebuilt release is **0.3.6**:
+
+- **Linux x86_64:** [qrq-0.3.6-linux-x86_64.tar.gz](https://github.com/garyPenhook/qrq/releases/download/v0.3.6/qrq-0.3.6-linux-x86_64.tar.gz).
+  Extract it and run `./qrq` from the extracted directory. It requires a
+  compatible x86_64 Linux system with the ncurses and PulseAudio runtime
+  libraries.
+- **Windows x86_64:** [qrq-0.3.6-windows-x86_64-setup.exe](https://github.com/garyPenhook/qrq/releases/download/v0.3.6/qrq-0.3.6-windows-x86_64-setup.exe).
+  The installer targets 64-bit Windows, including Windows 11. It is currently
+  unsigned, so Windows may display an unknown-publisher warning.
+- Verify either download with [SHA256SUMS](https://github.com/garyPenhook/qrq/releases/download/v0.3.6/SHA256SUMS).
+
 Run `qrq --version` to print the installed version in the console.
 
 For a hardware-independent developer check, build the mock audio backend and
