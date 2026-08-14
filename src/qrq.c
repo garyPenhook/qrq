@@ -178,6 +178,20 @@ static double qsb_phase=0.0;
 static int qrmlevel=0;                  /* co-channel interfering CW percentage */
 static struct qrq_qrm_state qrm_state;
 static size_t qrm_dot_samples=1;
+#define QRQ_AMBIENT_BLOCK_SAMPLES 2048U
+#ifdef WIN32
+static HANDLE ambient_noise_thread = NULL;
+static volatile LONG ambient_noise_stop = 0;
+#else
+static pthread_t ambient_noise_thread;
+static int ambient_noise_stop = 0;
+static pthread_mutex_t ambient_noise_mutex = PTHREAD_MUTEX_INITIALIZER;
+#endif
+static int ambient_noise_thread_active = 0;
+static int ambient_qrnlevel = 0;
+static int ambient_qrmlevel = 0;
+static int ambient_volume = 0;
+static size_t ambient_qrm_dot_samples = 1;
 static int pileuplevel=0;               /* secondary caller level as a percentage */
 static struct qrq_pileup_state pileup_state;
 static uint32_t pileup_random_state=0x58a1d3e7U;
@@ -257,6 +271,8 @@ static void draw_input_line(WINDOW *win, int y, int x, const char *line,
 static WINDOW *create_window(int height, int width, int y, int x);
 static void start_morse_thread(const char *text);
 static void wait_morse_thread(void);
+static void start_ambient_noise(void);
+static void stop_ambient_noise(void);
 static int check_toplist (void);
 static int find_files (void);
 #ifndef WIN32
@@ -377,6 +393,9 @@ static WINDOW *create_window(int height, int width, int y, int x) {
 }
 
 static void start_morse_thread(const char *text) {
+	/* The ambient worker owns the output device while the operator is
+	 * listening. Stop it before this CW message takes over the device. */
+	stop_ambient_noise();
 	set_sending_complete(0);
 #ifdef WIN_THREADS
 	cwthread = (HANDLE)_beginthreadex(NULL, 0, morse, (void *)text, 0, NULL);
@@ -432,6 +451,258 @@ static void wait_morse_thread(void) {
 	}
 #endif
 }
+
+static int ambient_noise_is_enabled(void) {
+	return qrnlevel != 0 || qrmlevel != 0;
+}
+
+#ifdef WIN32
+static unsigned __stdcall ambient_noise(void *unused) {
+	WAVEFORMATEX format = {0};
+	HWAVEOUT output = NULL;
+	HANDLE complete_event = NULL;
+	MMRESULT result;
+	unsigned int sample_rate;
+	size_t sample_index;
+
+	(void)unused;
+	if (samplerate <= 0 || (unsigned long)samplerate > UINT32_MAX / 2U) {
+		return 0U;
+	}
+	sample_rate = (unsigned int)samplerate;
+	format.wFormatTag = WAVE_FORMAT_PCM;
+	format.nChannels = 1;
+	format.wBitsPerSample = 16;
+	/* The existing WinMM player represents each mono sample twice, so retain
+	 * its effective rate and sample packing for the receiver background. */
+	format.nSamplesPerSec = (DWORD)sample_rate * 2U;
+	format.nBlockAlign = format.nChannels * format.wBitsPerSample / 8;
+	format.nAvgBytesPerSec = format.nSamplesPerSec * format.nBlockAlign;
+	complete_event = CreateEvent(NULL, FALSE, FALSE, NULL);
+	if (complete_event == NULL) {
+		return 0U;
+	}
+	result = waveOutOpen(&output, WAVE_MAPPER, &format, (DWORD_PTR)complete_event,
+			0, CALLBACK_EVENT);
+	if (result != MMSYSERR_NOERROR) {
+		(void)CloseHandle(complete_event);
+		return 0U;
+	}
+
+	while (InterlockedCompareExchange(&ambient_noise_stop, 0, 0) == 0) {
+		uint32_t samples[QRQ_AMBIENT_BLOCK_SAMPLES];
+		WAVEHDR header = {0};
+
+		for (sample_index = 0; sample_index < QRQ_AMBIENT_BLOCK_SAMPLES;
+				++sample_index) {
+			double value = 0.0;
+			int sample;
+
+			if (ambient_qrmlevel != 0) {
+				value += qrq_qrm_next_sample(&qrm_state, sample_rate,
+						ambient_qrm_dot_samples, ambient_qrmlevel);
+			}
+			if (ambient_qrnlevel != 0) {
+				value += qrn_sample() * (ambient_qrnlevel / 100.0);
+			}
+			sample = (int)(value * 32500.0 * ambient_volume / 100.0);
+			if (sample > 32500) sample = 32500;
+			if (sample < -32500) sample = -32500;
+			samples[sample_index] = ((uint32_t)(uint16_t)sample << 16) |
+					(uint16_t)sample;
+		}
+		header.lpData = (LPSTR)samples;
+		header.dwBufferLength = (DWORD)sizeof(samples);
+		result = waveOutPrepareHeader(output, &header, sizeof(header));
+		if (result != MMSYSERR_NOERROR) {
+			break;
+		}
+		if (!ResetEvent(complete_event)) {
+			(void)waveOutUnprepareHeader(output, &header, sizeof(header));
+			break;
+		}
+		if (waveOutWrite(output, &header, sizeof(header)) != MMSYSERR_NOERROR) {
+			(void)waveOutUnprepareHeader(output, &header, sizeof(header));
+			break;
+		}
+		if (WaitForSingleObject(complete_event, INFINITE) != WAIT_OBJECT_0) {
+			(void)waveOutReset(output);
+			(void)waveOutUnprepareHeader(output, &header, sizeof(header));
+			break;
+		}
+		if (waveOutUnprepareHeader(output, &header, sizeof(header)) != MMSYSERR_NOERROR) {
+			break;
+		}
+	}
+	(void)waveOutClose(output);
+	(void)CloseHandle(complete_event);
+	return 0U;
+}
+
+static void start_ambient_noise(void) {
+	uintptr_t thread_handle;
+
+	if (ambient_noise_thread_active || !ambient_noise_is_enabled() ||
+			!is_sending_complete()) {
+		return;
+	}
+	ambient_qrnlevel = qrnlevel;
+	ambient_qrmlevel = qrmlevel;
+	ambient_volume = volume;
+	ambient_qrm_dot_samples = qrm_dot_samples;
+	InterlockedExchange(&ambient_noise_stop, 0);
+	thread_handle = _beginthreadex(NULL, 0, ambient_noise, NULL, 0, NULL);
+	if (thread_handle == 0) {
+		fprintf(stderr, "Unable to create ambient-noise thread: %s\n", strerror(errno));
+		return;
+	}
+	ambient_noise_thread = (HANDLE)thread_handle;
+	ambient_noise_thread_active = 1;
+}
+
+static void stop_ambient_noise(void) {
+	DWORD wait_result;
+	DWORD wait_error;
+	BOOL close_result;
+
+	if (!ambient_noise_thread_active) {
+		return;
+	}
+	InterlockedExchange(&ambient_noise_stop, 1);
+	wait_result = WaitForSingleObject(ambient_noise_thread, INFINITE);
+	wait_error = wait_result == WAIT_FAILED ? GetLastError() : ERROR_SUCCESS;
+	close_result = CloseHandle(ambient_noise_thread);
+	ambient_noise_thread = NULL;
+	ambient_noise_thread_active = 0;
+	if (wait_result != WAIT_OBJECT_0 || !close_result) {
+		endwin();
+		fprintf(stderr, "Unable to wait for ambient-noise thread (wait=%lu, error=%lu).\n",
+				(unsigned long)wait_result, (unsigned long)wait_error);
+		exit(EXIT_FAILURE);
+	}
+}
+#else
+static int ambient_noise_should_stop(void) {
+	int stop;
+
+	pthread_mutex_lock(&ambient_noise_mutex);
+	stop = ambient_noise_stop;
+	pthread_mutex_unlock(&ambient_noise_mutex);
+	return stop;
+}
+
+static void *ambient_noise(void *unused) {
+	AUDIO_HANDLE ambient_dsp;
+	unsigned int sample_rate;
+	size_t sample_index;
+
+	(void)unused;
+	ambient_dsp = open_dsp(dspdevice);
+#if defined(PA) || defined(CA)
+	if (ambient_dsp == NULL) {
+		return NULL;
+	}
+#endif
+	sample_rate = (unsigned int)samplerate;
+	if (sample_rate == 0) {
+		(void)close_audio(ambient_dsp);
+		return NULL;
+	}
+
+	while (!ambient_noise_should_stop()) {
+#ifdef PA
+		int samples[QRQ_AMBIENT_BLOCK_SAMPLES];
+#else
+		uint32_t samples[QRQ_AMBIENT_BLOCK_SAMPLES];
+#endif
+
+		for (sample_index = 0; sample_index < QRQ_AMBIENT_BLOCK_SAMPLES;
+				++sample_index) {
+			double value = 0.0;
+			int output;
+
+			if (ambient_qrmlevel != 0) {
+				value += qrq_qrm_next_sample(&qrm_state, sample_rate,
+						ambient_qrm_dot_samples, ambient_qrmlevel);
+			}
+			if (ambient_qrnlevel != 0) {
+				value += qrn_sample() * (ambient_qrnlevel / 100.0);
+			}
+			output = (int)(value * 32500.0 * ambient_volume / 100.0);
+			if (output > 32500) output = 32500;
+			if (output < -32500) output = -32500;
+#ifdef PA
+			samples[sample_index] = output;
+#else
+			samples[sample_index] = ((uint32_t)(uint16_t)output << 16) |
+					(uint16_t)output;
+#endif
+		}
+		if (write_audio(ambient_dsp, (const int *)samples,
+				(int)sizeof(samples)) != 0) {
+			break;
+		}
+#ifdef PA
+		/* PulseAudio queues writes until close_audio() drains its staging
+		 * buffer, so submit each short ambient block immediately. */
+		if (close_audio(ambient_dsp) != 0) {
+			break;
+		}
+#endif
+#ifdef MOCK_AUDIO
+		/* Mock writes return immediately; retain the real-time cadence that
+		 * physical backends provide by blocking during their writes. */
+		{
+			const struct timespec interval = {0, 1000000L};
+
+			(void)nanosleep(&interval, NULL);
+		}
+#endif
+	}
+	(void)close_audio(ambient_dsp);
+	return NULL;
+}
+
+static void start_ambient_noise(void) {
+	int result;
+
+	if (ambient_noise_thread_active || !ambient_noise_is_enabled() ||
+			!is_sending_complete()) {
+		return;
+	}
+	ambient_qrnlevel = qrnlevel;
+	ambient_qrmlevel = qrmlevel;
+	ambient_volume = volume;
+	ambient_qrm_dot_samples = qrm_dot_samples;
+	pthread_mutex_lock(&ambient_noise_mutex);
+	ambient_noise_stop = 0;
+	pthread_mutex_unlock(&ambient_noise_mutex);
+	result = pthread_create(&ambient_noise_thread, NULL, ambient_noise, NULL);
+	if (result != 0) {
+		fprintf(stderr, "Unable to create ambient-noise thread: %s\n", strerror(result));
+		return;
+	}
+	ambient_noise_thread_active = 1;
+}
+
+static void stop_ambient_noise(void) {
+	int result;
+
+	if (!ambient_noise_thread_active) {
+		return;
+	}
+	pthread_mutex_lock(&ambient_noise_mutex);
+	ambient_noise_stop = 1;
+	pthread_mutex_unlock(&ambient_noise_mutex);
+	result = pthread_join(ambient_noise_thread, NULL);
+	ambient_noise_thread_active = 0;
+	if (result != 0) {
+		endwin();
+		fprintf(stderr, "Unable to wait for ambient-noise thread: %s\n", strerror(result));
+		exit(EXIT_FAILURE);
+	}
+}
+#endif
 
 char rcfilename[PATH_MAX]="";			/* filename and path to qrqrc */
 char tlfilename[PATH_MAX]="";			/* filename and path to toplist */
@@ -631,6 +902,9 @@ int main (int argc, char *argv[]) {
 	keypad(conf_w, TRUE);
 
 	start_morse_thread("QRQ");
+	/* Finish the welcome message before the session state is reset below.
+	 * This also gives the first input prompt a clean handoff to ambient noise. */
+	wait_morse_thread();
 
 /* very outter loop */
 while (1) {	
@@ -879,7 +1153,12 @@ while (status == 1) {
 
 		for (batch_position = 0; batch_position < batch_count; ++batch_position) {
 			i = batch_indices[batch_position];
-			freq = batch_frequencies[batch_position];
+			/* A one-item batch is still playing the frequency that selected it.
+			 * Delayed batches have finished sending, so restore the recorded
+			 * frequency for their F6/F7 replay handling. */
+			if (session_answerbatch > 1) {
+				freq = batch_frequencies[batch_position];
+			}
 			callnr = batch_start + (int)batch_position;
 			mvwaddstr(bot_w, 1, 1, "                                                          ");
 			mvwprintw(bot_w, 1, 1, "%3d/%s", callnr, unlimitedattempt ? "-" : "");
@@ -1333,6 +1612,7 @@ int j = 0;
 
 	/* Configuration values are read by the audio worker.  Join it before
 	 * displaying or changing those values, and after each F6 sample. */
+	stop_ambient_noise();
 	wait_morse_thread();
 	parameter_page = 0;
 	parameter_selection = 0;
@@ -1959,9 +2239,24 @@ static int readline(WINDOW *win, int y, int x, char *line, int capitals,
 	draw_input_line(win, y, x, line, display_width);
 	wrefresh(win);
 	curs_set(TRUE);
-	
+
+	if (ambient_noise_is_enabled()) {
+		/* Poll briefly so ambient QRN/QRM can begin as soon as a completed
+		 * Morse message leaves the operator at an input prompt. */
+		wtimeout(win, 50);
+	}
 	while (1) {
+		if (!ambient_noise_is_enabled()) {
+			stop_ambient_noise();
+			wtimeout(win, -1);
+		} else if (is_sending_complete()) {
+			wait_morse_thread();
+			start_ambient_noise();
+		}
 		c = wgetch(win);
+		if (c == ERR) {
+			continue;
+		}
 #ifndef WIN32
 		if (resize_pending) {
 			apply_terminal_resize();
@@ -2045,19 +2340,29 @@ static int readline(WINDOW *win, int y, int x, char *line, int capitals,
 			parameter_dialog();
 		}
 		else if (c == KEY_F(6)) {
+			stop_ambient_noise();
+			wtimeout(win, -1);
 			return 6;
 		}
 		else if (c == KEY_F(7)) {
+			stop_ambient_noise();
+			wtimeout(win, -1);
 			return 7;
 		}
 		else if (c == KEY_F(8)) {
+			stop_ambient_noise();
+			wtimeout(win, -1);
 			return 8;
 		}
 		else if (c == KEY_F(10)) {				/* quit */
 			if (callnr) {						/* quit attempt only */
+				stop_ambient_noise();
+				wtimeout(win, -1);
 				return 10;
 			} 
 			/* else: quit program */
+			stop_ambient_noise();
+			wtimeout(win, -1);
 			endwin();
 			printf("Thanks for using 'qrq'!\nYou can submit your"
 					" highscore to http://fkurz.net/ham/qrqtop.php\n");
@@ -2072,6 +2377,8 @@ static int readline(WINDOW *win, int y, int x, char *line, int capitals,
 		draw_input_line(win, y, x, line, display_width);
 		wrefresh(win);
 	}
+	stop_ambient_noise();
+	wtimeout(win, -1);
 	curs_set(FALSE);
 	return 0;
 }

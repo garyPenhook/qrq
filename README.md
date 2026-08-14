@@ -216,6 +216,11 @@ Set `qrmlevel` from 0 to 100 (or use `r/R` on F5's audio page) to add
 narrow-band CW interference. QRM arrives in short dot/dash-like bursts at
 nearby audio frequencies and is independent of QRN and QSB.
 
+With either `qrnlevel` or `qrmlevel` selected, QRQ applies it to the startup
+ident, then starts continuous receiver background at the first input prompt and
+keeps it running between callers as well as under them. QSB and the secondary
+pileup caller remain synchronized to an actual transmitted signal.
+
 Set W4GNS `pileuplevel` from 0 to 100 (or use `p/P` on F5's audio page) for a
 true two-caller pileup. QRQ selects a separate item from the active callbase,
 starts it at a nearby pitch after a short delay, and mixes it under the target;

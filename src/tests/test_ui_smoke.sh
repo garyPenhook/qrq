@@ -9,6 +9,8 @@ cp qrqrc toplist callbase.qcb "$workspace"/
 sed -i \
   -e 's/^callsign=.*/callsign=TEST/' \
   -e 's/^sessionlength=.*/sessionlength=1/' \
+  -e 's/^qrnlevel=.*/qrnlevel=20/' \
+  -e 's/^qrmlevel=.*/qrmlevel=20/' \
   "$workspace/qrqrc"
 
 expect <<EOF
