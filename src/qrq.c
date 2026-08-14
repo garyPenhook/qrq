@@ -294,6 +294,11 @@ static int write_file_atomic(const char *path, const void *data, size_t length);
 static unsigned practice_random_seed(void);
 #ifdef WIN32
 static int set_windows_resource_directory(void);
+static int current_directory_is_installed_application_directory(void);
+static int migrate_legacy_config(const char *source_path,
+		const char *destination_path);
+static int migrate_legacy_toplist_files(const char *source_path,
+		const char *destination_path);
 #endif
 #ifdef OSX_BUNDLE
 static int set_bundle_resource_directory(const char *program_path);
@@ -3664,6 +3669,33 @@ static int set_windows_resource_directory(void) {
 	}
 	return 0;
 }
+
+/* A 0.3.7 upgrade leaves its root-level files behind.  When the application
+ * is launched from its installed directory, those files must not take
+ * precedence over the new per-user configuration and share/qrq resources.
+ * Source-tree runs are unaffected because they do not have this resource tree. */
+static int current_directory_is_installed_application_directory(void) {
+	char current_directory[PATH_MAX];
+	char resource_path[PATH_MAX];
+	DWORD directory_length;
+	DWORD attributes;
+	int written;
+
+	directory_length = GetCurrentDirectoryA((DWORD)sizeof(current_directory),
+			current_directory);
+	if (directory_length == 0 || directory_length >= sizeof(current_directory) ||
+			_stricmp(current_directory, destdir) != 0) {
+		return 0;
+	}
+	written = snprintf(resource_path, sizeof(resource_path),
+			"%s/share/qrq/callbase.qcb", destdir);
+	if (written < 0 || (size_t)written >= sizeof(resource_path)) {
+		return 0;
+	}
+	attributes = GetFileAttributesA(resource_path);
+	return attributes != INVALID_FILE_ATTRIBUTES &&
+			(attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+}
 #endif
 
 #ifdef OSX_BUNDLE
@@ -3802,6 +3834,180 @@ static int file_is_readable(const char *path) {
 	return result;
 }
 
+#ifdef WIN32
+static int windows_paths_equal(const char *left, const char *right) {
+	unsigned char left_character;
+	unsigned char right_character;
+
+	while (*left != '\0' && *right != '\0') {
+		left_character = (unsigned char)*left++;
+		right_character = (unsigned char)*right++;
+		if (left_character == '/') left_character = '\\';
+		if (right_character == '/') right_character = '\\';
+		if (tolower(left_character) != tolower(right_character)) {
+			return 0;
+		}
+	}
+	return *left == '\0' && *right == '\0';
+}
+
+static int read_file_contents(const char *path, char **contents, size_t *length) {
+	FILE *file = NULL;
+	char *data = NULL;
+	long file_length;
+	int result = -1;
+
+	if (path == NULL || contents == NULL || length == NULL) {
+		errno = EINVAL;
+		return -1;
+	}
+	*contents = NULL;
+	*length = 0;
+	file = fopen(path, "rb");
+	if (file == NULL) {
+		return -1;
+	}
+	if (fseek(file, 0, SEEK_END) != 0 || (file_length = ftell(file)) < 0 ||
+			(size_t)file_length == SIZE_MAX || fseek(file, 0, SEEK_SET) != 0) {
+		goto cleanup;
+	}
+	data = malloc((size_t)file_length + 1);
+	if (data == NULL) {
+		goto cleanup;
+	}
+	if (file_length != 0 && fread(data, 1, (size_t)file_length, file) !=
+			(size_t)file_length) {
+		goto cleanup;
+	}
+	data[file_length] = '\0';
+	if (fclose(file) != 0) {
+		file = NULL;
+		goto cleanup;
+	}
+	file = NULL;
+	*contents = data;
+	*length = (size_t)file_length;
+	data = NULL;
+	result = 0;
+
+cleanup:
+	if (file != NULL) {
+		(void)fclose(file);
+	}
+	free(data);
+	return result;
+}
+
+static const char *legacy_bundled_callbase_name(const char *config,
+		size_t config_length) {
+	static const char *const names[] = {
+		"callbase.qcb", "english.qcb", "cwops.qcb", "morserunner.qcb"
+	};
+	char *parsed_config;
+	char *line;
+	char *next_line;
+	char *key;
+	char *value;
+	const char *selected = NULL;
+	size_t index;
+
+	parsed_config = malloc(config_length + 1);
+	if (parsed_config == NULL) {
+		return NULL;
+	}
+	memcpy(parsed_config, config, config_length + 1);
+	line = parsed_config;
+	while (line < parsed_config + config_length) {
+		int split_status;
+
+		next_line = strchr(line, '\n');
+		if (next_line != NULL) {
+			*next_line = '\0';
+		}
+		split_status = qrq_config_split_line(line, &key, &value);
+		if (split_status > 0 && strcmp(key, "callbase") == 0) {
+			selected = NULL;
+			for (index = 0; index < sizeof(names) / sizeof(names[0]); index++) {
+				char legacy_path[PATH_MAX];
+				char suffix[64];
+				int written = snprintf(suffix, sizeof(suffix), "/%s", names[index]);
+
+				if (written < 0 || (size_t)written >= sizeof(suffix) ||
+						build_path(legacy_path, sizeof(legacy_path), destdir, suffix) != 0) {
+					free(parsed_config);
+					return NULL;
+				}
+				if (windows_paths_equal(value, legacy_path) ||
+						windows_paths_equal(value, names[index])) {
+					selected = names[index];
+					break;
+				}
+			}
+		}
+		line = next_line == NULL ? parsed_config + config_length : next_line + 1;
+	}
+	free(parsed_config);
+	return selected;
+}
+
+static int migrate_legacy_config(const char *source_path,
+		const char *destination_path) {
+	char *config = NULL;
+	char shared_path[PATH_MAX];
+	char suffix[64];
+	const char *bundled_name;
+	size_t config_length;
+	int written;
+	int result = -1;
+
+	if (read_file_contents(source_path, &config, &config_length) != 0) {
+		return -1;
+	}
+	bundled_name = legacy_bundled_callbase_name(config, config_length);
+	if (bundled_name != NULL) {
+		written = snprintf(suffix, sizeof(suffix), "/share/qrq/%s", bundled_name);
+		if (written < 0 || (size_t)written >= sizeof(suffix) ||
+				build_path(shared_path, sizeof(shared_path), destdir, suffix) != 0 ||
+				qrq_config_set_value(&config, &config_length, "callbase",
+				shared_path) != 0) {
+			goto cleanup;
+		}
+	}
+	if (write_file_atomic(destination_path, config, config_length) != 0) {
+		goto cleanup;
+	}
+	result = 0;
+
+cleanup:
+	free(config);
+	return result;
+}
+
+static int migrate_legacy_toplist_files(const char *source_path,
+		const char *destination_path) {
+	static const char *const suffixes[] = {
+		".history.csv", ".confusions.csv", ".confusions.csv.bak", ".items.csv"
+	};
+	char source_file[PATH_MAX];
+	char destination_file[PATH_MAX];
+	size_t index;
+
+	for (index = 0; index < sizeof(suffixes) / sizeof(suffixes[0]); index++) {
+		if (build_path(source_file, sizeof(source_file), source_path,
+				suffixes[index]) != 0 ||
+				build_path(destination_file, sizeof(destination_file), destination_path,
+				suffixes[index]) != 0) {
+			return -1;
+		}
+		if (file_is_readable(source_file) && !file_is_readable(destination_file) &&
+				copy_file(source_file, destination_file) != 0) {
+			return -1;
+		}
+	}
+	return 0;
+}
+#endif
+
 static int create_directory_if_needed(const char *path) {
 	struct stat attributes;
 	int result;
@@ -3832,12 +4038,19 @@ static int find_files (void) {
 #ifdef WIN32
 	char legacy_rcfilename[PATH_MAX] = "";
 	char legacy_tlfilename[PATH_MAX] = "";
+	int migrating_legacy_config = 0;
+	int migrating_legacy_toplist = 0;
 #endif
 	int have_current_files;
 
 	printw("\nChecking for necessary files (qrqrc, toplist, callbase)...\n");
 	have_current_files = file_is_readable("qrqrc") &&
 			file_is_readable("toplist") && file_is_readable("callbase.qcb");
+#ifdef WIN32
+	if (have_current_files && current_directory_is_installed_application_directory()) {
+		have_current_files = 0;
+	}
+#endif
 	if (have_current_files) {
 		printw("... found in current directory.\n");
 		(void)config_string_value(0, "qrqrc path", "qrqrc", rcfilename,
@@ -3892,9 +4105,11 @@ static int find_files (void) {
 		/* Move 0.3.7's install-directory settings to the user config directory. */
 		if (!file_is_readable(rcfilename) && file_is_readable(legacy_rcfilename)) {
 			default_rcfilename = legacy_rcfilename;
+			migrating_legacy_config = 1;
 		}
 		if (!file_is_readable(tlfilename) && file_is_readable(legacy_tlfilename)) {
 			default_tlfilename = legacy_tlfilename;
+			migrating_legacy_toplist = 1;
 		}
 #endif
 		printw("... not found in current directory. Checking %s...\n",
@@ -3913,12 +4128,20 @@ static int find_files (void) {
 					config_directory, strerror(errno));
 			exit(EXIT_FAILURE);
 		}
-		if (!file_is_readable(rcfilename) &&
-				copy_file(default_rcfilename, rcfilename) != 0) {
-			endwin();
-			fprintf(stderr, "Unable to copy default config to %s: %s\n",
-					rcfilename, strerror(errno));
-			exit(EXIT_FAILURE);
+		if (!file_is_readable(rcfilename)) {
+#ifdef WIN32
+			if ((migrating_legacy_config &&
+					migrate_legacy_config(default_rcfilename, rcfilename) != 0) ||
+					(!migrating_legacy_config &&
+					copy_file(default_rcfilename, rcfilename) != 0)) {
+#else
+			if (copy_file(default_rcfilename, rcfilename) != 0) {
+#endif
+				endwin();
+				fprintf(stderr, "Unable to copy default config to %s: %s\n",
+						rcfilename, strerror(errno));
+				exit(EXIT_FAILURE);
+			}
 		}
 		if (!file_is_readable(tlfilename) &&
 				copy_file(default_tlfilename, tlfilename) != 0) {
@@ -3927,6 +4150,15 @@ static int find_files (void) {
 					tlfilename, strerror(errno));
 			exit(EXIT_FAILURE);
 		}
+		#ifdef WIN32
+		if (migrating_legacy_toplist &&
+				migrate_legacy_toplist_files(default_tlfilename, tlfilename) != 0) {
+			endwin();
+			fprintf(stderr, "Unable to migrate history files to %s: %s\n",
+					tlfilename, strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+		#endif
 		if (config_string_value(0, "callbase path", tmp_cbfilename, cbfilename,
 				sizeof(cbfilename), 0) != 0) {
 			endwin();
