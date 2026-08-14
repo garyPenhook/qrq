@@ -1,6 +1,6 @@
 QRQ - yet another CW trainer - Version 0.3.8
 
-[![Build, test, and portability](https://github.com/garyPenhook/qrq/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/garyPenhook/qrq/actions/workflows/ci.yml)
+[![Build, test, and portability](https://github.com/garyPenhook/qrq/actions/workflows/ci.yml/badge.svg?branch=master&event=push)](https://github.com/garyPenhook/qrq/actions/workflows/ci.yml)
 [![C23](https://img.shields.io/badge/C-C23-00599C?logo=c&logoColor=white)](.github/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)](COPYING)
 
