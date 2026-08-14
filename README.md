@@ -1,4 +1,4 @@
-QRQ - yet another CW trainer - Version 0.3.6
+QRQ - yet another CW trainer - Version 0.3.7 (development)
 
 [![Build, test, and portability](https://github.com/garyPenhook/qrq/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/garyPenhook/qrq/actions/workflows/ci.yml)
 [![C17](https://img.shields.io/badge/C-C17-00599C?logo=c&logoColor=white)](.github/workflows/ci.yml)
@@ -63,7 +63,8 @@ See separate file "INSTALL"
 
 ## Prebuilt downloads
 
-The current prebuilt release is **0.3.6**:
+The current prebuilt release is **0.3.6**. Version 0.3.7 adds local scoring
+for training-only sessions while keeping those sessions out of the toplist:
 
 - **Linux x86_64 AppImage:** [qrq-0.3.6-linux-x86_64.AppImage](https://github.com/garyPenhook/qrq/releases/download/v0.3.6/qrq-0.3.6-linux-x86_64.AppImage).
   Make it executable and run it; it bundles the required application runtime
@@ -227,9 +228,9 @@ before the menu opens; set it in qrqrc.
 
 Only an ordinary, completed 50-call session is comparable in the toplist.
 Fixed-speed, unlimited-repeat, non-50-call, adaptive, review, batch-copy,
-serial-copy, custom-item, sustained-goal, and seeded sessions are still
-recorded in local history but are toplist-ineligible. Portable-variant sessions
-and pileup sessions are also toplist-ineligible.
+serial-copy, custom-item, sustained-goal, and seeded sessions retain a local
+score and are recorded in local history, but are toplist-ineligible.
+Portable-variant sessions and pileup sessions are also toplist-ineligible.
 Aborted or incomplete sessions are also excluded. If an accuracy goal is set,
 the completed session must meet it.
 

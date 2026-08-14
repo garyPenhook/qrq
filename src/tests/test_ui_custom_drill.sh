@@ -9,7 +9,7 @@ cp qrqrc toplist callbase.qcb "$workspace"/
 sed -i \
   -e 's/^callsign=.*/callsign=TEST/' \
   -e 's/^sessionlength=.*/sessionlength=2/' \
-  -e 's/^customitems=.*/customitems=E,T/' \
+  -e 's/^customitems=.*/customitems=E,E/' \
   "$workspace/qrqrc"
 
 expect <<EOF
@@ -30,7 +30,7 @@ expect {
 after 100
 send "\r"
 expect {
-  "custom: 2 items" {}
+  -re {\[training\]} {}
   timeout { exit 1 }
   eof { exit 1 }
 }
@@ -40,14 +40,14 @@ expect {
   eof { exit 1 }
 }
 after 100
-send "X\r"
+send "E\r"
 expect {
   "2/2" {}
   timeout { exit 1 }
   eof { exit 1 }
 }
 after 100
-send "X\r"
+send "E\r"
 expect {
   "Attempt finished" {}
   timeout { exit 1 }
@@ -67,3 +67,5 @@ expect {
   timeout { exit 1 }
 }
 EOF
+
+rg -q '^Score: 420,' "$workspace"/Summary/*

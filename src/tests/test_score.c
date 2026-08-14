@@ -9,7 +9,6 @@ static struct qrq_score_state state(int speed) {
 		.maxspeed = 0,
 		.error_count = 0,
 		.fixed_speed = 0,
-		.attempt_valid = 1,
 		.speed_up_step = 10,
 		.speed_down_step = 10,
 	};
@@ -49,10 +48,6 @@ int main(void) {
 	assert(qrq_score_attempt(&session, "A", "A", 100, difference,
 			sizeof(difference)) == 200);
 	assert(session.speed == 90);
-
-	session.attempt_valid = 0;
-	assert(qrq_score_attempt(&session, "A", "A", 100, difference,
-			sizeof(difference)) == 0);
 
 	session = state(QRQ_SPEED_MAX - 2);
 	session.speed_up_step = 5;
