@@ -1,0 +1,29 @@
+#!/bin/sh
+# AppImage launcher: keep QRQ's mutable files outside the read-only image.
+set -eu
+
+appdir=${APPDIR:?APPDIR is not set}
+data_root=${XDG_DATA_HOME:-${HOME:-.}/.local/share}
+state_dir="$data_root/qrq"
+resources="$appdir/usr/share/qrq"
+
+mkdir -p "$state_dir"
+
+# Preserve existing settings and scores across AppImage upgrades.
+for file in qrqrc toplist; do
+	if [ ! -e "$state_dir/$file" ]; then
+		cp "$resources/$file" "$state_dir/$file"
+	fi
+done
+
+# Use bundled defaults unless the user has supplied a local callbase.
+for file in callbase.qcb english.qcb cwops.qcb morserunner.qcb; do
+	if [ -L "$state_dir/$file" ]; then
+		ln -sfn "$resources/$file" "$state_dir/$file"
+	elif [ ! -e "$state_dir/$file" ]; then
+		ln -s "$resources/$file" "$state_dir/$file"
+	fi
+done
+
+cd "$state_dir"
+exec "$appdir/usr/bin/qrq" "$@"

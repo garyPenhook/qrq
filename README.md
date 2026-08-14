@@ -65,7 +65,11 @@ See separate file "INSTALL"
 
 The current prebuilt release is **0.3.6**:
 
-- **Linux x86_64:** [qrq-0.3.6-linux-x86_64.tar.gz](https://github.com/garyPenhook/qrq/releases/download/v0.3.6/qrq-0.3.6-linux-x86_64.tar.gz).
+- **Linux x86_64 AppImage:** [qrq-0.3.6-linux-x86_64.AppImage](https://github.com/garyPenhook/qrq/releases/download/v0.3.6/qrq-0.3.6-linux-x86_64.AppImage).
+  Make it executable and run it; it bundles the required application runtime
+  libraries and stores mutable QRQ data in `XDG_DATA_HOME/qrq` (normally
+  `~/.local/share/qrq`).
+- **Linux x86_64 tarball:** [qrq-0.3.6-linux-x86_64.tar.gz](https://github.com/garyPenhook/qrq/releases/download/v0.3.6/qrq-0.3.6-linux-x86_64.tar.gz).
   Extract it and run `./qrq` from the extracted directory. It requires a
   compatible x86_64 Linux system with the ncurses and PulseAudio runtime
   libraries.
