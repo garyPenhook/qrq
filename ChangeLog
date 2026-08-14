@@ -1,3 +1,8 @@
+0.3.8 / 2026-08-14   W4GNS
+	* Locate Windows shared resources relative to the installed executable.
+	* Install Windows callbases and default settings under share/qrq, and
+	  migrate configuration and toplist files from the 0.3.7 install layout.
+
 0.3.7 / 2026-08-14   W4GNS
 	* Keep local scores visible and recorded for training-only sessions,
 	  while preserving their exclusion from the toplist.

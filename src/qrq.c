@@ -292,6 +292,9 @@ static void apply_confusion_focus(void);
 static int copy_file(const char *source_path, const char *destination_path);
 static int write_file_atomic(const char *path, const void *data, size_t length);
 static unsigned practice_random_seed(void);
+#ifdef WIN32
+static int set_windows_resource_directory(void);
+#endif
 #ifdef OSX_BUNDLE
 static int set_bundle_resource_directory(const char *program_path);
 #endif
@@ -452,8 +455,14 @@ WINDOW *right_w;				/* highscore list/settings		*/
 
 
 int main (int argc, char *argv[]) {
+	/* Installed Windows builds keep shared resources beside qrq.exe. */
+#ifdef WIN32
+	if (set_windows_resource_directory() != 0) {
+		fprintf(stderr, "Unable to locate the application resources.\n");
+		return EXIT_FAILURE;
+	}
   /* if built as osx bundle set the resource prefix to its Resources dir */
-#ifdef OSX_BUNDLE
+#elif defined(OSX_BUNDLE)
 	if (set_bundle_resource_directory(argv[0]) != 0) {
 		fprintf(stderr, "Unable to locate the application bundle resources.\n");
 		return EXIT_FAILURE;
@@ -3623,6 +3632,40 @@ cleanup:
 	return result;
 }
 
+#ifdef WIN32
+static int set_windows_resource_directory(void) {
+	char executable_path[PATH_MAX];
+	char *separator;
+	char *alternate_separator;
+	DWORD path_length;
+
+	path_length = GetModuleFileNameA(NULL, executable_path,
+			(DWORD)sizeof(executable_path));
+	if (path_length == 0 || path_length >= sizeof(executable_path)) {
+		errno = ENAMETOOLONG;
+		return -1;
+	}
+	executable_path[path_length] = '\0';
+	separator = strrchr(executable_path, '\\');
+	alternate_separator = strrchr(executable_path, '/');
+	if (alternate_separator != NULL &&
+			(separator == NULL || alternate_separator > separator)) {
+		separator = alternate_separator;
+	}
+	if (separator == NULL || separator == executable_path) {
+		errno = EINVAL;
+		return -1;
+	}
+	*separator = '\0';
+	if (snprintf(destdir, sizeof(destdir), "%s", executable_path) < 0 ||
+			strlen(executable_path) >= sizeof(destdir)) {
+		errno = ENAMETOOLONG;
+		return -1;
+	}
+	return 0;
+}
+#endif
+
 #ifdef OSX_BUNDLE
 static int set_bundle_resource_directory(const char *program_path) {
 	static const char suffix[] = "/Resources";
@@ -3780,10 +3823,16 @@ static int create_directory_if_needed(const char *path) {
 
 static int find_files (void) {
 	const char *homedir;
+	const char *default_rcfilename;
+	const char *default_tlfilename;
 	char config_directory[PATH_MAX];
 	char tmp_rcfilename[PATH_MAX] = "";
 	char tmp_tlfilename[PATH_MAX] = "";
 	char tmp_cbfilename[PATH_MAX] = "";
+#ifdef WIN32
+	char legacy_rcfilename[PATH_MAX] = "";
+	char legacy_tlfilename[PATH_MAX] = "";
+#endif
 	int have_current_files;
 
 	printw("\nChecking for necessary files (qrqrc, toplist, callbase)...\n");
@@ -3827,11 +3876,32 @@ static int find_files (void) {
 			fprintf(stderr, "Resource path is too long.\n");
 			exit(EXIT_FAILURE);
 		}
+#ifdef WIN32
+		if (build_path(legacy_rcfilename, sizeof(legacy_rcfilename), destdir,
+				"/qrqrc") != 0 ||
+				build_path(legacy_tlfilename, sizeof(legacy_tlfilename), destdir,
+				"/toplist") != 0) {
+			endwin();
+			fprintf(stderr, "Resource path is too long.\n");
+			exit(EXIT_FAILURE);
+		}
+#endif
+		default_rcfilename = tmp_rcfilename;
+		default_tlfilename = tmp_tlfilename;
+#ifdef WIN32
+		/* Move 0.3.7's install-directory settings to the user config directory. */
+		if (!file_is_readable(rcfilename) && file_is_readable(legacy_rcfilename)) {
+			default_rcfilename = legacy_rcfilename;
+		}
+		if (!file_is_readable(tlfilename) && file_is_readable(legacy_tlfilename)) {
+			default_tlfilename = legacy_tlfilename;
+		}
+#endif
 		printw("... not found in current directory. Checking %s...\n",
 				config_directory);
 		if (!file_is_readable(tmp_cbfilename) ||
-				(!file_is_readable(rcfilename) && !file_is_readable(tmp_rcfilename)) ||
-				(!file_is_readable(tlfilename) && !file_is_readable(tmp_tlfilename))) {
+				(!file_is_readable(rcfilename) && !file_is_readable(default_rcfilename)) ||
+				(!file_is_readable(tlfilename) && !file_is_readable(default_tlfilename))) {
 			endwin();
 			fprintf(stderr, "Could not find readable qrqrc, toplist, and "
 					"callbase.qcb resources.\n");
@@ -3843,13 +3913,15 @@ static int find_files (void) {
 					config_directory, strerror(errno));
 			exit(EXIT_FAILURE);
 		}
-		if (!file_is_readable(rcfilename) && copy_file(tmp_rcfilename, rcfilename) != 0) {
+		if (!file_is_readable(rcfilename) &&
+				copy_file(default_rcfilename, rcfilename) != 0) {
 			endwin();
 			fprintf(stderr, "Unable to copy default config to %s: %s\n",
 					rcfilename, strerror(errno));
 			exit(EXIT_FAILURE);
 		}
-		if (!file_is_readable(tlfilename) && copy_file(tmp_tlfilename, tlfilename) != 0) {
+		if (!file_is_readable(tlfilename) &&
+				copy_file(default_tlfilename, tlfilename) != 0) {
 			endwin();
 			fprintf(stderr, "Unable to copy default toplist to %s: %s\n",
 					tlfilename, strerror(errno));

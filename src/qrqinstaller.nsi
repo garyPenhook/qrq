@@ -13,7 +13,7 @@ RequestExecutionLevel admin
  
 InstallDir "$PROGRAMFILES64\qrq"
 InstallDirRegKey HKLM "${appkey}" "InstallLocation"
-DirText "Setup will install qrq _VERSION_ in the following folder. To install in a different folder, click Browse and select another folder. Click Install to start the installation. Note that if qrq is already installed the old installation is overwritten, except for the files 'qrqrc' and 'toplist'."
+DirText "Setup will install qrq _VERSION_ in the following folder. To install in a different folder, click Browse and select another folder. Click Install to start the installation. Settings and toplists are stored per user."
  
 LicenseText "License of High Speed CW trainer 'qrq' (https://fkurz.net/ham/qrq.html) by Fabian Kurz, DJ5CW"
 LicenseData "COPYING"
@@ -41,16 +41,16 @@ Section
 	File "qrq.exe"
 	File /oname=COPYING.txt "COPYING"
 	File /oname=AUTHORS.txt "AUTHORS"
-	File "callbase.qcb"
 	File /oname=ChangeLog.txt "ChangeLog"
+	File /oname=README.txt "README"
+	SetOutPath "$INSTDIR\share\qrq"
+	File "callbase.qcb"
 	File "english.qcb"
 	File "cwops.qcb"
 	File "morserunner.qcb"
-	File /oname=README.txt "README"
-  	SetOverwrite off
 	File "qrqrc"
 	File "toplist"
-  	SetOverwrite on
+	SetOutPath $INSTDIR
 	WriteUninstaller "qrquninstall.exe"
 	WriteRegStr HKLM "${appkey}" "InstallLocation" "$INSTDIR"
 	WriteRegStr HKLM "${uninstallkey}" "DisplayName" "qrq"
@@ -84,6 +84,7 @@ Section "Uninstall"
   RMDir "${startmenu}"
   Delete "$DESKTOP\qrq.lnk"
   Delete "$INSTDIR\*.*"
+  RMDir /r "$INSTDIR\share"
   RMDir $INSTDIR
   DeleteRegKey HKLM "${uninstallkey}"
   DeleteRegKey HKLM "${appkey}"
